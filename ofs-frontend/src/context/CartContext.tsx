@@ -8,6 +8,7 @@ export interface CartItem {
   unit: string;
   image: string;
   quantity: number;
+  weight: number; // weight per unit in lbs
 }
 
 interface CartContextType {
@@ -17,6 +18,7 @@ interface CartContextType {
   updateQuantity: (id: number, quantity: number) => void;
   clearCart: () => void;
   total: number;
+  totalWeight: number; // Added totalWeight to track total weight of items in cart
   itemCount: number;
 }
 
@@ -58,11 +60,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const totalWeight = items.reduce((sum, item) => sum + item.weight * item.quantity, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQuantity, clearCart, total, itemCount }}
+      value={{ items, addItem, removeItem, updateQuantity, clearCart, total, itemCount, totalWeight }}
     >
       {children}
     </CartContext.Provider>

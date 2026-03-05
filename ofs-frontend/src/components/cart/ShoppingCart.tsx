@@ -6,7 +6,7 @@ interface CartDrawerProps {
 }
 
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
-  const { items, updateQuantity, removeItem, total, clearCart } = useCart();
+  const { items, updateQuantity, removeItem, total, clearCart, totalWeight } = useCart();
 
   if (!isOpen) return null;
 
@@ -133,25 +133,29 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Delivery Fee</span>
-                <span>{total >= 50 ? "FREE" : "$4.99"}</span>
+                <span>{totalWeight > 20 ? "$10.00" : "FREE"}</span>
               </div>
               <div className="border-t pt-2 flex justify-between text-lg font-semibold text-gray-900">
                 <span>Total</span>
-                <span>${(total + (total >= 50 ? 0 : 4.99)).toFixed(2)}</span>
+                <span>${(total + (totalWeight > 20 ? 10 : 0)).toFixed(2)}</span>
               </div>
             </div>
 
             {/* Free Delivery Progress */}
-            {total < 50 && (
+            {(
               <div className="mb-4">
                 <div className="flex justify-between text-sm text-gray-600 mb-2">
-                  <span>Free delivery at $50</span>
-                  <span>${(50 - total).toFixed(2)} to go</span>
+                  <span>Weight progress (20 lb threshold)</span>
+                  <span>
+                    {totalWeight >= 20
+                      ? `Over ${20} lb`
+                      : `${(20 - totalWeight).toFixed(1)} lb to go`}
+                  </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-green-600 h-2 rounded-full transition-all"
-                    style={{ width: `${(total / 50) * 100}%` }}
+                    style={{ width: `${Math.min((totalWeight / 20) * 100, 100)}%` }}
                   ></div>
                 </div>
               </div>

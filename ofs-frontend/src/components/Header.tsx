@@ -30,7 +30,7 @@ export function Header() {
             <Link href="/" className="flex items-center gap-2">
               <ShoppingBasket className="w-8 h-8 text-green-600" />
               <span className="text-xl font-semibold text-gray-900">
-                Fresh Family Market
+                OFS
               </span>
             </Link>
 
