@@ -201,24 +201,24 @@ export default function ManagerDashboardPage() {
               {/*Orders/Transactions*/}
               <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-5">
                 <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Orders & History</h2>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                <p className="mt-1 text-sm text-zinc-800 dark:text-zinc-800">
                 </p>
 
                 <div className="mt-4 grid gap-3">
                   {recentOrders.map((o) => (
-                    <div key={o.id} className="rounded-xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-3">
+                    <div key={o.id} className=" rounded-xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-3">
                       <div className="flex items-center justify-between">
-                        <div className="font-semibold">{o.id}</div>
+                        <div className="text-zinc-800 dark:text-zinc-300 font-semibold">{o.id}</div>
                         <span className={statusBadge(o.status)}>{o.status}</span>
                       </div>
-                      <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                      <div className="mt-1 text-sm text-zinc-800 dark:text-zinc-800">
                         {o.customer} • {o.total} • {o.weight}
                       </div>
                       <div className="mt-3 flex gap-2">
-                        <button className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
+                        <button className="px-3 py-1.5 text-zinc-800 dark:text-zinc-300 rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
                           View
                         </button>
-                        <button className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
+                        <button className="px-3 py-1.5 text-zinc-800 dark:text-zinc-300 rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
                           Update Status
                         </button>
                       </div>
@@ -227,10 +227,10 @@ export default function ManagerDashboardPage() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-2">
-                  <button className="px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
+                  <button className="px-4 py-2 text-zinc-800 dark:text-zinc-300 rounded-xl border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
                     View All Orders
                   </button>
-                  <button className="px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
+                  <button className="px-4 py-2 text-zinc-800 dark:text-zinc-300 rounded-xl border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
                     Transaction History
                   </button>
                 </div>
@@ -247,7 +247,7 @@ export default function ManagerDashboardPage() {
                   <button className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium">
                     View Sales Report
                   </button>
-                  <button className="px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
+                  <button className="px-4 py-2 text-zinc-800 dark:text-zinc-300 rounded-xl border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30">
                     Export Sales CSV
                   </button>
                 </div>
