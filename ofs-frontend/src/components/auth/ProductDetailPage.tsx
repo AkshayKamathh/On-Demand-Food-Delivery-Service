@@ -1,37 +1,28 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-  useMemo,
-} from "react";
+/*
+Call with:
+<ProductDetailPage open={open} onClose={() => setOpen(false)} />
+*/
+
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
-
-import {
-  inputClasses,
-  labelClasses,
-  buttonClasses,
-  dividerClasses,
-  linkClasses,
-  subtitleClasses,
-  errorClasses,
-} from "@/lib/theme-classes";
-
-import SearchBar from "../SearchBar";
-
-type Theme = "light" | "dark";
+import { buttonClasses, dividerClasses } from "@/lib/theme-classes";
 
 type Nutrient = { label: string; value: string };
 
-export default function ProductDetailPage() {
-  // Placeholder "images" (later swap to real URLs and next/image)
+type ProductDetailOverlayProps = {
+  open: boolean;
+  onClose: () => void;
+};
+
+export default function ProductDetailOverlay({
+  open,
+  onClose,
+}: ProductDetailOverlayProps) {
   const images = useMemo(() => [0, 1, 2, 3, 4, 5], []);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Update to real product data structure as needed (name, price, description, nutrition, etc.)
   const nutrients: Nutrient[] = [
     { label: "Calories", value: "—" },
     { label: "Protein", value: "— g" },
@@ -40,7 +31,26 @@ export default function ProductDetailPage() {
     { label: "Sodium", value: "— mg" },
   ];
 
-  // Inline “theme-ish” classes (match your zinc + emerald palette)
+  // Close on ESC
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  // Lock background scroll
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  if (!open) return null;
+
   const card = cn(
     "rounded-2xl",
     "bg-white dark:bg-zinc-800",
@@ -78,46 +88,70 @@ export default function ProductDetailPage() {
   );
 
   const subtleText = cn("text-xs", "text-zinc-500 dark:text-zinc-400");
-
   const surface = cn(
     "rounded-xl",
     "border border-zinc-200 dark:border-zinc-700",
   );
-
   const nutrientRow = cn("flex items-center justify-between py-2");
   const nutrientKey = cn("text-zinc-600 dark:text-zinc-300");
   const nutrientVal = cn("text-zinc-900 dark:text-white font-medium");
 
-  const secondaryButton = cn(
-    "text-sm font-medium",
-    "px-3 py-2 rounded-lg",
+  const closeBtn = cn(
+    "inline-flex items-center justify-center",
+    "h-9 w-9 rounded-lg",
     "border border-zinc-200 dark:border-zinc-700",
-    "bg-white dark:bg-zinc-800",
-    "hover:bg-zinc-50 dark:hover:bg-zinc-700",
+    "bg-white/70 dark:bg-zinc-800/60",
+    "hover:bg-white dark:hover:bg-zinc-700",
+    "text-zinc-700 dark:text-zinc-200",
     "focus:outline-none focus:ring-2 focus:ring-emerald-500",
   );
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-900">
-      <SearchBar></SearchBar>
-      <div className="max-w-5xl mx-auto p-4 sm:p-6">
+    <div
+      className={cn(
+        "fixed inset-0 z-50",
+        "flex items-center justify-center",
+        "p-4 sm:p-6",
+      )}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Product details"
+    >
+      {/* Backdrop */}
+      <button
+        type="button"
+        aria-label="Close overlay"
+        onClick={onClose}
+        className={cn(
+          "absolute inset-0",
+          "bg-black/40 dark:bg-black/60",
+          "backdrop-blur-sm",
+        )}
+      />
+
+      {/* Panel */}
+      <div
+        className={cn(
+          "relative w-full",
+          "max-w-5xl",
+          "max-h-[90dvh] sm:max-h-[90vh]",
+          "overscroll-contain",
+          "overflow-y-auto",
+        )}
+      >
+        <div
+          className={cn(
+            "sticky top-0 z-10",
+            "flex justify-end",
+            "pt-2 pr-2 mb-1",
+          )}
+        >
+          <button type="button" className={closeBtn} onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
         <div className={cn(card, "p-4 sm:p-6")}>
-          {/* Optional top bar 
-          <div className="flex items-center justify-between gap-3 mb-6">
-            <div className={cn("text-sm", "text-zinc-500 dark:text-zinc-400")}>
-              Theme: <span className="font-medium">{theme}</span>
-            </div>
-
-            <button
-              type="button"
-              className={secondaryButton}
-              onClick={toggleTheme}
-            >
-              Toggle theme
-            </button>
-          </div>
-          */}
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Media */}
             <div>
@@ -130,10 +164,7 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <div
-                className="mt-3 flex gap-3 overflow-x-auto pb-1 px-1 py-1"
-                aria-label="Product thumbnails"
-              >
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-1 px-1 py-1">
                 {images.map((imgIdx) => {
                   const isActive = imgIdx === activeIndex;
                   return (
@@ -147,7 +178,6 @@ export default function ProductDetailPage() {
                           "ring-2 ring-emerald-500 border-transparent",
                       )}
                       aria-pressed={isActive}
-                      aria-label={`Select image ${imgIdx + 1}`}
                     >
                       <span className="text-xs">#{imgIdx + 1}</span>
                     </button>
@@ -168,7 +198,7 @@ export default function ProductDetailPage() {
 
                 <p className={cn(bodyText, "mt-3")}>
                   Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed
-                  do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+                  do eiusmod tempor.
                 </p>
               </div>
 
@@ -199,7 +229,6 @@ export default function ProductDetailPage() {
               <div className={dividerClasses} />
 
               <div className="mt-auto">
-                {/* Reuse your existing theme button */}
                 <button
                   type="button"
                   className={buttonClasses}
@@ -216,14 +245,12 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* Extra section */}
         <div className={cn(card, "p-4 sm:p-6 mt-6")}>
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
             Details
           </h2>
           <p className={cn(bodyText, "mt-2")}>
-            More product details can go here (ingredients, allergens, origin,
-            etc.).
+            More product details can go here.
           </p>
         </div>
       </div>
