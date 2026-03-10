@@ -3,6 +3,10 @@
 import { cn } from "@/lib/cn";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import PasswordToggleButton from "./PasswordToggleButton";
+import { usePasswordVisibility } from "@/hooks/usePasswordVisibility";
 import {
   inputClasses,
   labelClasses,
@@ -16,11 +20,37 @@ import {
 export default function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading] = useState(false);
-  const [error] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const passwordVis = usePasswordVisibility();
+    const [passwordFocused, setPasswordFocused] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
+
+      // Logged in successfully
+      // Later when FastAPI is implemented
+      // check the users role and route to /home or /manager/dashboard
+      router.push("/home");
+    } catch (err: any) {
+      setError(err?.message ?? "Something went wrong.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -60,15 +90,23 @@ export default function LoginForm() {
           <label className={labelClasses} htmlFor="password">
             Password
           </label>
-          <input
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className={cn(inputClasses, "pr-9")}
-          />
+          <div className="relative">
+            <input
+              id="password"
+              type={passwordVis.visible ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onFocus={() => setPasswordFocused(true)}
+              onBlur={() => setPasswordFocused(false)}
+              required
+              className={cn(inputClasses, "pr-26")}
+            />
+            <PasswordToggleButton
+              visible={passwordVis.visible}
+              onToggle={passwordVis.toggle}
+            />
+          </div>
         </div>
 
         <div className="animate-fade-slide-up delay-400">

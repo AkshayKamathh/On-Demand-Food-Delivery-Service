@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import PasswordToggleButton from "./PasswordToggleButton";
 import { usePasswordVisibility } from "@/hooks/usePasswordVisibility";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { supabase } from "@/lib/supabaseClient";
 import {
   inputClasses,
   labelClasses,
@@ -41,13 +42,12 @@ export default function SignupForm() {
   const passwordVis = usePasswordVisibility();
   const confirmPasswordVis = usePasswordVisibility();
   const router = useRouter();
-  const passwordRef = useRef<HTMLInputElement>(null);
 
   const showRequirements =
     passwordFocused || (password.length > 0 && !allMet(password));
   const passwordValid = allMet(password);
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.SubmitEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -62,8 +62,30 @@ export default function SignupForm() {
     }
 
     setLoading(true);
-    // signup logic here later
-    setLoading(false);
+
+    try {
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username,
+          },
+        },
+      });
+
+      if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+      }
+
+      // User Logs in
+      router.push("/login");
+    } catch (err: any) {
+      setError(err?.message ?? "Something went wrong.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -123,7 +145,6 @@ export default function SignupForm() {
           </label>
           <div className="relative">
             <input
-              ref={passwordRef}
               id="password"
               type={passwordVis.visible ? "text" : "password"}
               placeholder="••••••••"
