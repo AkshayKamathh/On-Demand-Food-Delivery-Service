@@ -19,7 +19,7 @@ export default function ForgotPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
     setError(null);
     setSent(false);
@@ -46,9 +46,9 @@ export default function ForgotPasswordForm() {
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-sm">
+    <div className="flex flex-col gap-8 w-full max-w-sm">
       <div className="animate-fade-slide-up delay-100">
-        <h1 className="text-3xl font-bold text-zinc-800 dark:text-zinc-800">
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">
           Forgot your password?
         </h1>
         <p className={cn(subtitleClasses, "mt-1")}>

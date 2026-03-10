@@ -47,7 +47,7 @@ export default function SignupForm() {
     passwordFocused || (password.length > 0 && !allMet(password));
   const passwordValid = allMet(password);
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.SubmitEvent) => {
     e.preventDefault();
     setError(null);
 
