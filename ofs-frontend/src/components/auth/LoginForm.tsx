@@ -16,6 +16,7 @@ import {
   subtitleClasses,
   errorClasses,
 } from "@/lib/theme-classes";
+const { data: { user } } = await supabase.auth.getUser();
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -24,7 +25,8 @@ export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const passwordVis = usePasswordVisibility();
-    const [passwordFocused, setPasswordFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const role = user?.user_metadata?.role;
 
   const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
@@ -46,7 +48,13 @@ export default function LoginForm() {
       // Logged in successfully
       // Later when FastAPI is implemented
       // check the users role and route to /home or /manager/dashboard
-      router.push("/home");
+      router.push("/userDashboard");
+
+      // if (role === 'manager') {
+      //   router.push('/manager/dashboard');
+      // } else {
+      //   router.push('/dashboard');
+      // }
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong.");
       setLoading(false);
