@@ -8,11 +8,12 @@ import Link from "next/link";
 export default function Navbar() {
   const pathname = usePathname();
 
-  // Show starting navbar on landing page AND auth routes
+  // Show starting navbar on landing page and on auth routes
   const showNavbar = pathname === "/" 
   || pathname.startsWith("/login") 
   || pathname.startsWith("/forgot-password")
   || pathname.startsWith("/signup")
+  || pathname.startsWith("/reset-password")
 
   if (!showNavbar) return null;
 

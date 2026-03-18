@@ -2,8 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react"; 
-import { ShoppingCart, Menu } from "lucide-react";
+import { useState } from "react";
+import { ShoppingCart, Menu, User as UserIcon } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import Cart from "@/components/cart/cart";
@@ -22,21 +22,38 @@ export default function DashboardNavbar() {
         <div className="flex items-center gap-4">
           {/* Desktop links */}
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/userDashboard" className="text-sm font-medium text-zinc-400  hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+            <Link
+              href="/userDashboard"
+              className="text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
               Products
             </Link>
-            <Link href="/dashboard/about" className="text-sm font-medium text-zinc-400  hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+            <Link
+              href="/dashboard/about"
+              className="text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
               About
             </Link>
-            <Link href="/dashboard/contact" className="text-sm font-medium text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+            <Link
+              href="/dashboard/contact"
+              className="text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
               Contact
+            </Link>
+            {/* Account link */}
+            <Link
+              href="/dashboard/account"
+              className="flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              <UserIcon className="h-4 w-4" />
+              Account
             </Link>
           </div>
 
           {/* Cart Button */}
           <button
             onClick={() => setCartOpen(true)}
-            className="relative p-2 text-zinc-300  hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+            className="relative p-2 text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
           >
             <ShoppingCart className="h-5 w-5" />
             {cartCount > 0 && (
@@ -61,7 +78,6 @@ export default function DashboardNavbar() {
         </button>
       </nav>
 
-      {/* Cart Component */}
       <Cart isOpen={cartOpen} onClose={() => setCartOpen(false)} />
     </>
   );
