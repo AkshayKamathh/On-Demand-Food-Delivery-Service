@@ -1,0 +1,15 @@
+# Node
+node_modules/
+
+# Next.js build
+.next/
+
+# Local env
+.env
+
+# VS Code
+.vscode/
+
+# Ignore frontend package files (untracked intentionally)
+/ofs-frontend/package.json
+/ofs-frontend/package-lock.json
