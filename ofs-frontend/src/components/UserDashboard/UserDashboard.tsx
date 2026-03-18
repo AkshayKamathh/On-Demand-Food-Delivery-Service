@@ -139,11 +139,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Product count */}
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center">
-            Showing {filteredProducts.length} of {products.length} products
-          </p>
-
           {/* Product grid */}
           <div className="animate-fade-slide-up delay-200 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {filteredProducts.map((product) => (
@@ -227,7 +222,7 @@ export default function DashboardPage() {
 
           {/* No results */}
           {filteredProducts.length === 0 && (
-            <div className="text-center py-16">
+            <div className="text-center py-4">
               <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-zinc-400 dark:text-zinc-500 animate-pulse" />
               <h3 className="text-lg font-medium mb-2 text-zinc-900 dark:text-zinc-50">
                 No products found
@@ -246,6 +241,11 @@ export default function DashboardPage() {
               </button>
             </div>
           )}
+
+                    {/* Product count */}
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center">
+            Showing {filteredProducts.length} of {products.length} products
+          </p>
         </section>
       </main>
 

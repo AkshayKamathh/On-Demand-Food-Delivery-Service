@@ -20,10 +20,10 @@ const features = [
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 text-zinc-900 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 dark:text-violet-50">
+    <main className="min-h-screen animate-fade-slide-up delay-100 bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 text-zinc-900 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 dark:text-violet-50">
       {/* SECTION */}
       <section className="px-6 py-16 md:py-24 lg:py-28 max-w-6xl mx-auto">
-        <div className="grid gap-10 md:grid-cols-2 items-center">
+        <div className="animate-fade-slide-up delay-100 grid gap-10 md:grid-cols-2 items-center">
           {/* Left area*/}
           <div className="space-y-6">
 
@@ -37,7 +37,7 @@ export default function LandingPage() {
               you updated at every step—from order received to delivered.
             </p>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="animate-fade-slide-up delay-200 flex flex-wrap gap-3">
               <Link
                 href="/signup"
                 className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-medium text-zinc-100 dark:text-zinc-900 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 transition-colors"
@@ -52,14 +52,14 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-white">
-              <span>• No delivery fees on orders over 25 lbs</span>
+            <div className="animate-fade-slide-up delay-300 flex items-center gap-4 text-xs text-zinc-500 dark:text-white">
+              <span>• No delivery fees on orders under 20 lbs</span>
               <span>• Cancel anytime</span>
             </div>
           </div>
 
           {/* Right: map + order details */}
-          <div className="relative">
+          <div className="animate-fade-slide-up delay-200 relative">
             <div className="absolute -inset-4 bg-emerald-500/10 dark:bg-emerald-500/10 blur-3xl rounded-3xl" />
 
             <div className="relative rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 overflow-hidden shadow-xl">
@@ -104,7 +104,7 @@ export default function LandingPage() {
                 <div className="grid grid-cols-3 gap-3 text-xs">
                   <div className="rounded-xl bg-zinc-100/80 dark:bg-zinc-900/70 px-3 py-2">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-500">Weight</p>
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">7.4 kg</p>
+                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">7.4 lbs</p>
                   </div>
                   <div className="rounded-xl bg-zinc-100/80 dark:bg-zinc-900/70 px-3 py-2">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-500">Total</p>
@@ -167,7 +167,7 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="px-6 pb-16 md:pb-24 max-w-5xl mx-auto">
+      <section className="animate-fade-slide-up delay-400 px-6 pb-16 md:pb-24 max-w-5xl mx-auto">
         <div className="mb-8">
           <h2 className="text-xl md:text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             Everything you need for fast grocery delivery
@@ -193,7 +193,7 @@ export default function LandingPage() {
       </section>
 
       {/* CTA footer */}
-      <section className="px-6 pb-12 max-w-4xl mx-auto">
+      <section className="animate-fade-slide-up delay-500 px-6 pb-12 max-w-4xl mx-auto">
         <div className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-emerald-100/60 via-white to-zinc-50 dark:from-emerald-500/10 dark:via-zinc-950 dark:to-zinc-950 px-6 py-8 md:px-10 md:py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h3 className="text-lg md:text-xl font-semibold text-zinc-900 dark:text-zinc-50">

@@ -58,7 +58,7 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-zinc-100 dark:bg-zinc-900 p-6 flex items-center justify-center">
+      <main className="min-h-screen animate-fade-slide-up delay-100 bg-zinc-100 dark:bg-zinc-900 p-6 flex items-center justify-center">
         <div className="text-lg">Loading account...</div>
       </main>
     );
@@ -69,7 +69,7 @@ export default function AccountPage() {
   }
 
   return (
-     <main className="min-h-screen pt-10 bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 text-zinc-900 dark:text-violet-50">
+     <main className="min-h-screen animate-fade-slide-up delay-200 pt-10 bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 text-zinc-900 dark:text-violet-50">
       <div className="mx-auto w-full max-w-4xl bg-white/80 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/50 backdrop-blur-sm rounded-2xl p-8 shadow-xl shadow-black/10 dark:shadow-black/30">
         <div className="flex items-center gap-3 mb-6">
           <User className="h-8 w-8 text-emerald-600" />
@@ -82,7 +82,7 @@ export default function AccountPage() {
           Manage your profile information and account settings. WIP
         </p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="animate-fade-slide-up delay-300 grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Profile Info */}
           <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-6">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
@@ -105,7 +105,7 @@ export default function AccountPage() {
           </section>
 
           {/* Profile pic and Actions */}
-          <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-6">
+          <section className=" animate-fade-slide-up delay-200 rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-6">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
               Profile Picture
             </h2>
@@ -118,7 +118,7 @@ export default function AccountPage() {
               </p>
             </div>
 
-            <div className="space-y-3">
+            <div className=" animate-fade-slide-up delay-300 space-y-3">
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all"
@@ -130,7 +130,7 @@ export default function AccountPage() {
           </section>
         </div>
 
-        <div className="mt-10 flex flex-wrap gap-3">
+        <div className="animate-fade-slide-up delay-400 mt-10 flex flex-wrap gap-3">
           <Link
             href="/userDashboard"
             className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all"

@@ -104,7 +104,7 @@ export default function Cart({ isOpen, onClose }: CartProps) {
           </div>
           
           <div className={`flex justify-between text-sm ${
-            totalWeight >= 25 
+            totalWeight <= 20 
               ? "text-emerald-600 dark:text-emerald-400" 
               : "text-zinc-600 dark:text-zinc-300"
           }`}>
@@ -115,7 +115,7 @@ export default function Cart({ isOpen, onClose }: CartProps) {
               </span>
             </span>
             <span>
-              {totalWeight >= 25 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
+              {totalWeight <= 20 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
             </span>
           </div>
 

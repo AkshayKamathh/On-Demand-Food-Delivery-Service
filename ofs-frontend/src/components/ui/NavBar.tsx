@@ -18,7 +18,7 @@ export default function Navbar() {
   if (!showNavbar) return null;
 
   return (
-    <nav className="flex items-center justify-between p-4 border-b border-zinc-200 border-zinc-800 bg-zinc-950/80 backdrop-blur">
+    <nav className="flex items-center justify-between p-4 border-b border-zinc-200 border-zinc-800 bg-emerald-500/20 dark:bg-zinc-950/80 backdrop-blur">
       <Link href="/" className="text-xl font-bold text-zinc-50">
         OFS
       </Link>
