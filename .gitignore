@@ -13,3 +13,5 @@ node_modules/
 # Ignore frontend package files (untracked intentionally)
 /ofs-frontend/package.json
 /ofs-frontend/package-lock.json
+
+__pycache__/
