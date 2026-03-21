@@ -2,10 +2,8 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-COPY ofs-frontend/package*.json ./
-RUN npm install
-
 COPY ofs-frontend/ .
+RUN npm install
 
 EXPOSE 3000
 

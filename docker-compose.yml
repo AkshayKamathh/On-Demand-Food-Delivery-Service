@@ -14,3 +14,13 @@ services:
       NODE_ENV: development
       WATCHPACK_POLLING: "true"
     command: npm run dev
+
+  backend:
+    build:
+      context: ./ofs-backend
+      dockerfile: dockerfile
+    container_name: ofs-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ofs-backend:/app
