@@ -1,5 +1,7 @@
 "use client";
 
+// TODO Fix the filter, put it in its own separate container, 
+// make search bar update as you type
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/cn";
 import { inputClasses, buttonClasses } from "@/lib/theme-classes";
@@ -81,7 +83,7 @@ export default function SearchBar({
           </button>
         </div>
 
-        {/* Clear Button - Fixed size */}
+        {/* Clear Button*/}
         <div className="flex-shrink-0">
           <button
             onClick={clearFilters}
@@ -98,7 +100,7 @@ export default function SearchBar({
         </div>
       </div>
 
-      {/* Filters Dropdown */}
+      {/* Filters Dropdown with checkbox */}
     {showFilters && (
       <div className="fixed right-4 top-20 z-50 w-64 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 shadow-2xl max-h-64 overflow-y-auto">
         <div className="space-y-2">
