@@ -1,4 +1,4 @@
-// will be handled by backend in the future
+// will be handled by backend and db in the future
 "use client";
 
 import { createContext, useContext, useState, ReactNode } from "react";
@@ -55,7 +55,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const weightNum = parseFloat(item.weight.split(" ")[0]) || 0;
     return sum + weightNum * item.quantity;
   }, 0);
-  const deliveryFee = totalWeight >= 25 ? 0 : 4.99;
+  const deliveryFee = totalWeight <= 20 ? 0 : 10.00;
   const total = subtotal + deliveryFee;
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 

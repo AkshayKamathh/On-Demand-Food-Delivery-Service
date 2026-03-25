@@ -15,7 +15,7 @@ export default function Cart({ isOpen, onClose }: CartProps) {
 
   return (
     <div className={`fixed inset-0 z-50 bg-black/50 dark:bg-black/70 backdrop-blur-sm transition-all ${isOpen ? 'flex' : 'hidden'}`}>
-        <div className="w-100 ml-auto bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-700 backdrop-blur-xl shadow-2xl flex flex-col h-full">
+      <div className="w-100 ml-auto bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-700 backdrop-blur-xl shadow-2xl flex flex-col h-full">
         {/* Header */}
         <div className="p-6 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
           <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">
@@ -23,7 +23,8 @@ export default function Cart({ isOpen, onClose }: CartProps) {
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+          >
             <X className="h-5 w-5 text-zinc-500" />
           </button>
         </div>
@@ -37,7 +38,8 @@ export default function Cart({ isOpen, onClose }: CartProps) {
               <Link
                 href="/userDashboard"
                 className="px-6 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-400 transition-colors"
-                onClick={onClose}>
+                onClick={onClose}
+              >
                 Start Shopping
               </Link>
             </div>
@@ -47,9 +49,27 @@ export default function Cart({ isOpen, onClose }: CartProps) {
                 key={item.id}
                 className="flex items-center gap-3 p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors mb-3"
               >
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-50 to-amber-50 dark:from-zinc-800 dark:to-emerald-900 flex items-center justify-center text-lg flex-shrink-0">
-                  {item.image}
+                {/* image from db */}
+                <div className="w-12 h-12 rounded-lg flex-shrink-0 overflow-hidden">
+                  {typeof item.image === 'string' && item.image.startsWith('http') ? (
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                      }}
+                    />
+                  ) : null}
+                  <div 
+                    className={cn(
+                      "w-full h-full flex items-center justify-center text-lg bg-gradient-to-br from-emerald-50 to-amber-50 dark:from-zinc-800 dark:to-emerald-900",
+                      typeof item.image === 'string' && item.image.startsWith('http') ? 'hidden' : 'flex'
+                    )}
+                  >
+                    🛒
+                  </div>
                 </div>
+
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-sm text-zinc-900 dark:text-zinc-50 truncate">
                     {item.name}
@@ -98,13 +118,13 @@ export default function Cart({ isOpen, onClose }: CartProps) {
             <span>
               Total Weight ({totalWeight} lbs):{" "}
             </span>
-            <span className=" text-zinc-600 dark:text-zinc-50">
+            <span className="text-zinc-600 dark:text-zinc-50">
               {totalWeight.toFixed()}
             </span>
           </div>
           
           <div className={`flex justify-between text-sm ${
-            totalWeight >= 25 
+            totalWeight <= 20 
               ? "text-emerald-600 dark:text-emerald-400" 
               : "text-zinc-600 dark:text-zinc-300"
           }`}>
@@ -115,10 +135,9 @@ export default function Cart({ isOpen, onClose }: CartProps) {
               </span>
             </span>
             <span>
-              {totalWeight >= 25 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
+              {totalWeight <= 20 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
             </span>
           </div>
-
 
           <div className="flex justify-between text-lg font-bold pt-2 border-t text-zinc-800 dark:text-zinc-300 border-zinc-300 dark:border-zinc-600">
             <span>Total:</span>

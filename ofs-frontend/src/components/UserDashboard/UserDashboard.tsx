@@ -1,12 +1,22 @@
-// app/(dashboard)/page.tsx
+// reminder to handle all product initiation in backend
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ShoppingCart, Eye } from "lucide-react";
 import { cn } from "@/lib/cn";
 import SearchBar from "@/components/ui/SearchBar";
 import { useCart } from "@/context/CartContext";
 import ProductDetailOverlay from "@/components/products/detail/ProductDetailPage";
+
+type ApiProduct = {
+  item_id: number;
+  description: string;
+  category_id: number | null;
+  price: number;
+  weight: number;
+  stock: number;
+  image_url: string | null;
+};
 
 type Product = {
   id: number;
@@ -16,59 +26,54 @@ type Product = {
   unit: string;
   weight: string;
   inStock: number;
-  emoji: string; 
+  imageUrl: string | null;  
 };
 
-const initialProducts: Product[] = [
-  {
-    id: 1,
-    name: "Organic Apples",
-    category: "Fruits",
-    price: 4.99,
-    unit: "/lb",
-    weight: "1 lb",
-    inStock: 32,
-    emoji: "🍎",  
-  },
-  {
-    id: 2,
-    name: "Fresh Tomatoes", 
-    category: "Vegetables",
-    price: 3.49,
-    unit: "/lb",
-    weight: "1 lb",
-    inStock: 24,
-    emoji: "🍅",  
-  },
-  {
-    id: 3,
-    name: "Whole Milk",
-    category: "Dairy",
-    price: 5.99,
-    unit: "/gal",
-    weight: "3 lb - 1 gal",
-    inStock: 18,
-    emoji: "🥛", 
-  },
-  {
-    id: 4,
-    name: "Sourdough Bread",
-    category: "Bakery",
-    price: 6.99,
-    unit: "/loaf",
-    weight: "2 lb - 1 loaf",
-    inStock: 15,
-    emoji: "🥖",  
-  },
-];
+const categoryNames: Record<number, string> = {
+  1: "Fruits",
+  2: "Vegetables", 
+  3: "Dairy",
+  4: "Bakery",
+  5: "Meat & Seafood",
+};
 
 export default function DashboardPage() {
-  const [products] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState("");
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const { addToCart, cartCount } = useCart();
+  //fetches products from back end
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        const res = await fetch("http://localhost:8000/catalog/products");
+        if (!res.ok) throw new Error("Failed to fetch products");
+        const data: ApiProduct[] = await res.json();
+
+        const mapped: Product[] = data.map((p) => ({
+          id: p.item_id,
+          name: p.description ?? "Unnamed Product",
+          category: categoryNames[p.category_id ?? 0] ?? "General",
+          price: p.price ?? 0,
+          unit: "/lb",
+          weight: p.weight ? `${p.weight.toFixed(1)} lb` : "1 lb",
+          inStock: p.stock ?? 0,
+          imageUrl: p.image_url ?? null,  
+        }));
+
+        setProducts(mapped);
+      } catch (error) {
+        console.error("Failed to load products:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProducts();
+  }, []);
 
   const filteredProducts = useMemo(() => {
     const searchQuery = query.toLowerCase();
@@ -95,7 +100,7 @@ export default function DashboardPage() {
       name: product.name,
       price: product.price,
       weight: product.weight,
-      image: product.emoji,  // change later when we have imgs
+      image: product.imageUrl ?? "🛒", // else use emoji if no url for now
     });
   };
 
@@ -106,6 +111,16 @@ export default function DashboardPage() {
   const closeProductDetail = () => {
     setSelectedProduct(null);
   };
+
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100">
+        <div className="text-lg text-zinc-600 dark:text-zinc-400 animate-pulse">
+          Loading products from store...
+        </div>
+      </main>
+    );
+  }
 
   return (
     <>
@@ -139,11 +154,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Product count */}
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center">
-            Showing {filteredProducts.length} of {products.length} products
-          </p>
-
           {/* Product grid */}
           <div className="animate-fade-slide-up delay-200 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {filteredProducts.map((product) => (
@@ -151,9 +161,20 @@ export default function DashboardPage() {
                 key={product.id}
                 className="animate-fade-slide-up delay-300 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm hover:shadow-xl transition-all duration-300 hover:scale-[1.02] flex flex-col group"
               >
-                {/* Image with unique emoji */}
-                <div className="relative h-32 rounded-t-2xl bg-gradient-to-br from-emerald-50 to-amber-50 dark:from-zinc-900 dark:to-emerald-950 flex items-center justify-center text-4xl overflow-hidden group-hover:brightness-110">
-                  <span className="drop-shadow-2xl z-10 animate-bounce-slow">{product.emoji}</span>
+                {/*  uses img url now */}
+                <div className="relative h-32 rounded-t-2xl bg-gradient-to-br from-emerald-50 to-amber-50 dark:from-zinc-900 dark:to-emerald-950 overflow-hidden group-hover:brightness-110">
+                  {product.imageUrl ? (
+                    <img
+                      src={product.imageUrl}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-4xl">
+                      <span className="text-zinc-400">🛒</span>
+                    </div>
+                  )}
                   
                   {/* Detail button overlay */}
                   <button
@@ -227,7 +248,7 @@ export default function DashboardPage() {
 
           {/* No results */}
           {filteredProducts.length === 0 && (
-            <div className="text-center py-16">
+            <div className="text-center py-4">
               <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-zinc-400 dark:text-zinc-500 animate-pulse" />
               <h3 className="text-lg font-medium mb-2 text-zinc-900 dark:text-zinc-50">
                 No products found
@@ -246,6 +267,11 @@ export default function DashboardPage() {
               </button>
             </div>
           )}
+
+          {/* Product count */}
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center">
+            Showing {filteredProducts.length} of {products.length} products
+          </p>
         </section>
       </main>
 
