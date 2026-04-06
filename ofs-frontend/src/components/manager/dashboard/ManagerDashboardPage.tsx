@@ -32,14 +32,11 @@ export default function ManagerDashboardPage() {
   ];
 
   const [showAdd, setShowAdd] = useState(false);
-
-  const [newSku, setNewSku] = useState("");
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState("Fruits");
   const [newWeight, setNewWeight] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [newStock, setNewStock] = useState("");
-  const [newStatus, setNewStatus] = useState("In Stock");
 
   const [adding, setAdding] = useState(false);
 
@@ -49,11 +46,10 @@ export default function ManagerDashboardPage() {
       setSaveMsg("");
       setError("");
 
-      const sku = newSku.trim();
       const name = newName.trim();
 
-      if (!sku || !name) {
-        setSaveMsg("SKU and Name are required.");
+      if (!name) {
+        setSaveMsg("Name is required.");
         return;
       }
 
@@ -75,13 +71,11 @@ export default function ManagerDashboardPage() {
       }
 
       const payload = {
-        sku,
         name,
         category: newCategory,
         price: priceNum,
         weight_lb: weightNum,
         stock: stockNum,
-        status: newStatus,
       };
 
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -100,19 +94,20 @@ export default function ManagerDashboardPage() {
       const created = await res.json();
 
       //Add to table immediately
-      setInventory((prev) => [created, ...prev]);
+      //setInventory((prev) => [created, ...prev]);
+      setInventory((prev) =>
+        [created, ...prev].sort((a, b) => Number(a.sku) - Number(b.sku))
+      );
 
       setSaveMsg(`Added ${created.sku}.`);
       setShowAdd(false);
 
       //Clear fields
-      setNewSku("");
       setNewName("");
       setNewCategory("Fruits");
       setNewWeight("");
       setNewPrice("");
       setNewStock("");
-      setNewStatus("In Stock");
     } catch (e: any) {
       setSaveMsg(`Add failed: ${e?.message ?? "Unknown error"}`);
     } finally {
@@ -146,7 +141,6 @@ export default function ManagerDashboardPage() {
   const [skuInput, setSkuInput] = useState("");
   const [stockInput, setStockInput] = useState("");
   const [priceInput, setPriceInput] = useState("");
-  const [statusInput, setStatusInput] = useState("In Stock");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
@@ -183,14 +177,9 @@ export default function ManagerDashboardPage() {
         payload.price = priceNum;
       }
 
-      // Always send status if selected (optional—feel free to require it)
-      if (statusInput) {
-        payload.status = statusInput;
-      }
-
       // If user didn’t fill anything besides SKU, do nothing
       if (Object.keys(payload).length === 0) {
-        setSaveMsg("Enter stock/price/status to update.");
+        setSaveMsg("Enter stock/price to update.");
         return;
       }
 
@@ -230,7 +219,6 @@ export default function ManagerDashboardPage() {
     setSkuInput(item.sku);
     setStockInput(String(item.stock));
     setPriceInput(String(item.price));
-    setStatusInput(item.status || "In Stock");
     setSaveMsg(`Editing ${item.sku} — change fields then click Save Update.`);
   }
 
@@ -261,7 +249,6 @@ export default function ManagerDashboardPage() {
         setSkuInput("");
         setStockInput("");
         setPriceInput("");
-        setStatusInput("In Stock");
       }
 
       setSaveMsg(`Deleted ${sku}.`);
@@ -370,7 +357,6 @@ export default function ManagerDashboardPage() {
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input className={inputClass} placeholder="SKU (e.g. TOM-010)" value={newSku} onChange={(e) => setNewSku(e.target.value)} />
                     <input className={inputClass} placeholder="Name (e.g. Organic Tomatoes)" value={newName} onChange={(e) => setNewName(e.target.value)} />
                     <select className={inputClass} value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
                       <option className="bg-zinc-900">Fruits</option>
@@ -382,12 +368,6 @@ export default function ManagerDashboardPage() {
                     <input className={inputClass} placeholder="Weight lb (e.g. 1.2)" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} />
                     <input className={inputClass} placeholder="Price (e.g. 2.75)" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} />
                     <input className={inputClass} placeholder="Stock (e.g. 20)" value={newStock} onChange={(e) => setNewStock(e.target.value)} />
-
-                    <select className={inputClass} value={newStatus} onChange={(e) => setNewStatus(e.target.value)}>
-                      <option className="bg-zinc-900">In Stock</option>
-                      <option className="bg-zinc-900">Low Stock</option>
-                      <option className="bg-zinc-900">Out of Stock</option>
-                    </select>
                   </div>
                 </div>
               )}
@@ -466,7 +446,7 @@ export default function ManagerDashboardPage() {
                   <div>
                     <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Quick Update</h3>
                     <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                      Update stock/price/status for an item using the backend PATCH endpoint.
+                      Update stock/price for an item using the backend PATCH endpoint.
                     </p>
                   </div>
 
@@ -484,7 +464,7 @@ export default function ManagerDashboardPage() {
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
                   <input
                     className={inputClass}
-                    placeholder="SKU (e.g. BAN-002)"
+                    placeholder="Item ID (e.g. 12)"
                     value={skuInput}
                     onChange={(e) => setSkuInput(e.target.value)}
                   />
@@ -502,16 +482,6 @@ export default function ManagerDashboardPage() {
                     value={priceInput}
                     onChange={(e) => setPriceInput(e.target.value)}
                   />
-
-                  <select
-                    className={inputClass}
-                    value={statusInput}
-                    onChange={(e) => setStatusInput(e.target.value)}
-                  >
-                    <option className="bg-zinc-900">In Stock</option>
-                    <option className="bg-zinc-900">Low Stock</option>
-                    <option className="bg-zinc-900">Out of Stock</option>
-                  </select>
                 </div>
 
                 {saveMsg && (

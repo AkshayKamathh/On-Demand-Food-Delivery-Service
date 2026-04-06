@@ -1,77 +1,214 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Optional
+from db import get_db
 from schemas.inventory import InventoryItem, InventoryUpdate, InventoryCreate
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-#Mock data in memory instead of database for now
-INVENTORY_DB = {
-    "APL-001": InventoryItem(sku="APL-001", name="Organic Apples", category="Fruits", price=2.49, weight_lb=1.0, stock=42, status="In Stock"),
-    "BAN-002": InventoryItem(sku="BAN-002", name="Organic Bananas", category="Fruits", price=1.99, weight_lb=2.0, stock=8, status="Low Stock"),
-    "KAL-003": InventoryItem(sku="KAL-003", name="Organic Kale", category="Vegetables", price=3.49, weight_lb=0.5, stock=0, status="Out of Stock"),
+#Define stock status based on quantity
+def status_from_stock(stock: int) -> str:
+    if stock <= 0:
+        return "Out of Stock"
+    if stock <= 10:
+        return "Low Stock"
+    return "In Stock"
+
+#Helper function to parse SKU to item_id
+def parse_item_id(sku: str) -> int:
+    #We treat "sku" as item_id (string) to keep frontend keys stable
+    try:
+        return int(sku)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="SKU must be a numeric item_id")
+    
+#Category mapping
+CATEGORY_NAME_TO_ID = {
+    "Fruits": 1,
+    "Vegetables": 2,
+    "Dairy": 3,
+    "Bakery": 4,
+    "Meat & Seafood": 5
 }
 
+CATEGORY_ID_TO_NAME = {v: k for k, v in CATEGORY_NAME_TO_ID.items()}
+    
 #GET /inventory
 @router.get("/", response_model=List[InventoryItem])
 def list_inventory():
-    #Return all items as a list
-    return list(INVENTORY_DB.values())
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT item_id, description, category_id, price, weight, stock
+            FROM public.items
+            ORDER BY item_id
+            """
+        )
+        rows = cur.fetchall()
+
+    items: List[InventoryItem] = []
+    for r in rows:
+        stock = int(r["stock"]) if r["stock"] is not None else 0
+        category_id = r["category_id"]
+        category_name = CATEGORY_ID_TO_NAME.get(category_id, "Uncategorized")
+        items.append(
+            InventoryItem(
+                sku=str(r["item_id"]),
+                name=r["description"],
+                category=category_name,
+                price=float(r["price"]) if r["price"] is not None else 0.0,
+                weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
+                stock=stock,
+                status=status_from_stock(stock),
+            )
+        )
+    return items
 
 #GET /inventory/{sku}
 @router.get("/{sku}", response_model=InventoryItem)
 def get_inventory_item(sku: str):
-    item = INVENTORY_DB.get(sku)
-    if not item:
+    item_id = parse_item_id(sku)
+
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT item_id, description, category_id, price, weight, stock
+            FROM public.items
+            WHERE item_id = %(item_id)s
+            """,
+            {"item_id": item_id},
+        )
+        r = cur.fetchone()
+
+    if not r:
         raise HTTPException(status_code=404, detail="Item not found")
-    return item
+
+    stock = int(r["stock"]) if r["stock"] is not None else 0
+    category_id = r["category_id"]
+    category_name = CATEGORY_ID_TO_NAME.get(category_id, "Uncategorized")
+    return InventoryItem(
+        sku=str(r["item_id"]),
+        name=r["description"],
+        category=category_name,
+        price=float(r["price"]) if r["price"] is not None else 0.0,
+        weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
+        stock=stock,
+        status=status_from_stock(stock),
+    )
 
 #PATCH /inventory/{sku}
 @router.patch("/{sku}", response_model=InventoryItem)
 def update_inventory_item(sku: str, payload: InventoryUpdate):
-    item = INVENTORY_DB.get(sku)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+    item_id = parse_item_id(sku)
+    data = payload.model_dump(exclude_unset=True)
 
-    updated = item.model_copy(update=payload.model_dump(exclude_unset=True))
-
-    #Inventory stock business rules:
-    if updated.stock < 0:
+    # Your business rule
+    if "stock" in data and data["stock"] is not None and data["stock"] < 0:
         raise HTTPException(status_code=400, detail="Stock cannot be negative")
 
-    #Auto-status rule
-    if updated.stock == 0:
-        updated = updated.model_copy(update={"status": "Out of Stock"})
+    # Only update fields that exist in public.items
+    set_clauses = []
+    params = {"item_id": item_id}
 
-    INVENTORY_DB[sku] = updated
-    return updated
+    if "price" in data and data["price"] is not None:
+        set_clauses.append("price = %(price)s")
+        params["price"] = data["price"]
+
+    if "stock" in data and data["stock"] is not None:
+        set_clauses.append("stock = %(stock)s")
+        params["stock"] = data["stock"]
+
+    # Optional: allow updating category if your payload includes it and you want to support it later.
+    # If your InventoryUpdate schema does not have category_id, ignore this.
+    if "category_id" in data and data["category_id"] is not None:
+        set_clauses.append("category_id = %(category_id)s")
+        params["category_id"] = data["category_id"]
+
+    if not set_clauses:
+        raise HTTPException(status_code=400, detail="No updatable fields provided (price/stock)")
+
+    with get_db() as (conn, cur):
+        cur.execute(
+            f"""
+            UPDATE public.items
+            SET {", ".join(set_clauses)}
+            WHERE item_id = %(item_id)s
+            RETURNING item_id, description, category_id, price, weight, stock
+            """,
+            params,
+        )
+        r = cur.fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Item not found")
+        conn.commit()
+
+    stock = int(r["stock"]) if r["stock"] is not None else 0
+    category_id = r["category_id"]
+    category_name = CATEGORY_ID_TO_NAME.get(category_id, "Uncategorized")
+    return InventoryItem(
+        sku=str(r["item_id"]),
+        name=r["description"],
+        category=category_name,
+        price=float(r["price"]) if r["price"] is not None else 0.0,
+        weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
+        stock=stock,
+        status=status_from_stock(stock),
+    )
 
 #DELETE /inventory/{sku}
 @router.delete("/{sku}")
 def delete_inventory_item(sku: str):
-    if sku not in INVENTORY_DB:
-        raise HTTPException(status_code=404, detail="Item not found")
-    del INVENTORY_DB[sku]
-    return {"deleted": sku}
+    item_id = parse_item_id(sku)
+
+    with get_db() as (conn, cur):
+        cur.execute(
+            "DELETE FROM public.items WHERE item_id = %(item_id)s RETURNING item_id",
+            {"item_id": item_id},
+        )
+        r = cur.fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Item not found")
+        conn.commit()
+
+    return {"deleted": str(item_id)}
 
 #POST /inventory
 @router.post("/", response_model=InventoryItem, status_code=201)
 def create_inventory_item(payload: InventoryCreate):
-    sku = payload.sku.strip()
-
-    if not sku:
-        raise HTTPException(status_code=400, detail="SKU is required")
-
-    if sku in INVENTORY_DB:
-        raise HTTPException(status_code=409, detail="SKU already exists")
-
     if payload.stock < 0:
         raise HTTPException(status_code=400, detail="Stock cannot be negative")
 
-    item = InventoryItem(**payload.model_dump())
+    category_id = CATEGORY_NAME_TO_ID.get(payload.category)
+    if category_id is None:
+        raise HTTPException(status_code=400, detail="Unknown category")
 
-    # Optional: auto-status based on stock
-    if item.stock == 0:
-        item = item.model_copy(update={"status": "Out of Stock"})
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            INSERT INTO public.items (description, category_id, price, weight, stock, image_url)
+            VALUES (%(desc)s, %(category_id)s, %(price)s, %(weight)s, %(stock)s, %(image_url)s)
+            RETURNING item_id, description, category_id, price, weight, stock
+            """,
+            {
+                "desc": payload.name,
+                "category_id": category_id,
+                "price": payload.price,
+                "weight": payload.weight_lb,
+                "stock": payload.stock,
+                "image_url": None,
+            },
+        )
+        r = cur.fetchone()
+        conn.commit()
 
-    INVENTORY_DB[sku] = item
-    return item
+    stock = int(r["stock"]) if r["stock"] is not None else 0
+    category_name = CATEGORY_ID_TO_NAME.get(r["category_id"], "Uncategorized")
+
+    return InventoryItem(
+        sku=str(r["item_id"]),
+        name=r["description"],
+        category=category_name,
+        price=float(r["price"]) if r["price"] is not None else 0.0,
+        weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
+        stock=stock,
+        status=status_from_stock(stock),
+    )
