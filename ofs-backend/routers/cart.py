@@ -8,9 +8,7 @@ from schemas.cart import CartItem, CartItemCreate, CartItemUpdate
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
-# Still need to update stock and quantity handling in DB
-
-# GET /cart/items
+# update the cart routers based on added unique cart id
 @router.get("/items", response_model=List[CartItem])
 def list_cart_items(user_id: UUID = Depends(get_current_user_id)):
     with get_db() as (conn, cur):
@@ -27,6 +25,7 @@ def list_cart_items(user_id: UUID = Depends(get_current_user_id)):
             FROM public.cart_items ci
             JOIN public.items i ON i.item_id = ci.item_id
             WHERE ci.user_id = %(uid)s
+            ORDER BY ci.updated_at DESC, ci.id DESC
             """,
             {"uid": str(user_id)},
         )
@@ -46,14 +45,12 @@ def list_cart_items(user_id: UUID = Depends(get_current_user_id)):
     ]
 
 
-# POST /cart/items
 @router.post("/items", response_model=CartItem, status_code=201)
 def add_cart_item(
     payload: CartItemCreate,
     user_id: UUID = Depends(get_current_user_id),
 ):
     with get_db() as (conn, cur):
-        # check product
         cur.execute(
             """
             SELECT item_id, description, price, weight, image_url
@@ -66,40 +63,19 @@ def add_cart_item(
         if not prod:
             raise HTTPException(status_code=404, detail="Item not found")
 
-        # check existing cart item
         cur.execute(
             """
-            SELECT id, quantity
-            FROM public.cart_items
-            WHERE user_id = %(uid)s AND item_id = %(item_id)s
+            INSERT INTO public.cart_items (user_id, item_id, quantity)
+            VALUES (%(uid)s, %(item_id)s, %(q)s)
+            ON CONFLICT (user_id, item_id)
+            DO UPDATE SET
+              quantity = public.cart_items.quantity + EXCLUDED.quantity,
+              updated_at = now()
+            RETURNING id, item_id, quantity
             """,
-            {"uid": str(user_id), "item_id": payload.item_id},
+            {"uid": str(user_id), "item_id": payload.item_id, "q": payload.quantity},
         )
-        existing = cur.fetchone()
-
-        if existing:
-            new_qty = existing["quantity"] + payload.quantity
-            cur.execute(
-                """
-                UPDATE public.cart_items
-                SET quantity = %(q)s, updated_at = now()
-                WHERE id = %(id)s
-                RETURNING id, item_id, quantity
-                """,
-                {"q": new_qty, "id": existing["id"]},
-            )
-            row = cur.fetchone()
-        else:
-            cur.execute(
-                """
-                INSERT INTO public.cart_items (user_id, item_id, quantity)
-                VALUES (%(uid)s, %(item_id)s, %(q)s)
-                RETURNING id, item_id, quantity
-                """,
-                {"uid": str(user_id), "item_id": payload.item_id, "q": payload.quantity},
-            )
-            row = cur.fetchone()
-
+        row = cur.fetchone()
         conn.commit()
 
     return CartItem(
@@ -113,7 +89,6 @@ def add_cart_item(
     )
 
 
-# PATCH /cart/items/{id}
 @router.patch("/items/{cart_item_id}", response_model=CartItem)
 def update_cart_item(
     cart_item_id: int,
@@ -143,6 +118,7 @@ def update_cart_item(
             {"item_id": row["item_id"]},
         )
         prod = cur.fetchone()
+        conn.commit()
 
     return CartItem(
         id=row["id"],
@@ -155,7 +131,6 @@ def update_cart_item(
     )
 
 
-# DELETE /cart/items
 @router.delete("/items", status_code=204)
 def clear_cart(user_id: UUID = Depends(get_current_user_id)):
     with get_db() as (conn, cur):

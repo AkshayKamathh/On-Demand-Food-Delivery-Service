@@ -94,14 +94,19 @@ export default function DashboardPage() {
     setSelectedFilters(filters);
   };
 
-  const handleAddToCart = (product: Product) => {
-    addToCart({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      weight: product.weight,
-      image: product.imageUrl ?? "🛒", // else use emoji if no url for now
-    });
+  // Update user dash add to cart with new cart context 
+  const handleAddToCart = async (product: Product) => {
+    try {
+      await addToCart({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        weight: product.weight,
+        image: product.imageUrl ?? null,
+      });
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const openProductDetail = (product: Product) => {

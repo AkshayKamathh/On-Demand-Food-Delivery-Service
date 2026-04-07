@@ -12,7 +12,7 @@ if not DATABASE_URL:
 
 @contextmanager
 def get_db():
-    # psycopg 3 connection
+    # psycopg3 connection
     with psycopg.connect(DATABASE_URL) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             yield conn, cur
