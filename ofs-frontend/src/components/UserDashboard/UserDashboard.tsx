@@ -8,6 +8,7 @@ import SearchBar from "@/components/ui/SearchBar";
 import { useCart } from "@/context/CartContext";
 import ProductDetailOverlay from "@/components/products/detail/ProductDetailPage";
 
+
 type ApiProduct = {
   item_id: number;
   description: string;
@@ -45,6 +46,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const { addToCart, cartCount } = useCart();
+  const [addingItemId, setAddingItemId] = useState<number | null>(null);
+
   //fetches products from back end
   useEffect(() => {
     async function loadProducts() {
@@ -96,18 +99,26 @@ export default function DashboardPage() {
 
   // Update user dash add to cart with new cart context 
   const handleAddToCart = async (product: Product) => {
-    try {
-      await addToCart({
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        weight: product.weight,
-        image: product.imageUrl ?? null,
-      });
-    } catch (error) {
-      console.error(error);
-    }
-  };
+  if (addingItemId !== null) return;
+
+  try {
+    setAddingItemId(product.id);
+
+    await addToCart({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      weight: product.weight,
+      image: product.imageUrl ?? null,
+    });
+
+    // toast error
+  } catch (error) {
+    console.error("Failed to add to cart:", error);
+  } finally {
+    setAddingItemId(null);
+  }
+};
 
   const openProductDetail = (product: Product) => {
     setSelectedProduct(product);
@@ -240,9 +251,10 @@ export default function DashboardPage() {
                       {/* Add to Cart */}
                       <button
                         onClick={() => handleAddToCart(product)}
-                        className="inline-flex items-center justify-center rounded-lg bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-md active:scale-[0.97] transition-all"
-                      >
-                        Add
+                        disabled={addingItemId === product.id}
+                        className="inline-flex items-center justify-center rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 text-xs font-semibold text-white shadow-md active:scale-[0.97] transition-all"
+                      > {/* waits for db to update cart state */}
+                        {addingItemId === product.id ? "Adding..." : "Add"}
                       </button>
                     </div>
                   </div>
