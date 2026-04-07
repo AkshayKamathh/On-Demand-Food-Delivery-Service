@@ -27,49 +27,46 @@ export default function LoginForm() {
   const [passwordFocused, setPasswordFocused] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  e.preventDefault();
+  setError(null);
+  setLoading(true);
 
-    try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  try {
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      if (signInError) {
-        setError(signInError.message);
-        return;
-      }
-
-      const user = data.user;
-      if (!user) {
-        setError("No user returned after sign in.");
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError) {
-        setError(profileError.message);
-        return;
-      }
-
-      if (profile?.role === "manager") {
-        router.push("/managerDashboard");
-      } else {
-        router.push("/userDashboard");
-      }
-    } catch (err: any) {
-      setError(err?.message ?? "Something went wrong.");
-    } finally {
-      setLoading(false);
+    if (signInError) {
+      setError(signInError.message);
+      return;
     }
-  };
+
+    const user = data.user;
+    if (!user) {
+      setError("No user returned after sign in.");
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      setError(profileError.message);
+      return;
+    }
+
+    router.replace(profile?.role === "manager" ? "/managerDashboard" : "/userDashboard");
+  } catch (err: any) {
+    setError(err?.message ?? "Something went wrong.");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-sm">

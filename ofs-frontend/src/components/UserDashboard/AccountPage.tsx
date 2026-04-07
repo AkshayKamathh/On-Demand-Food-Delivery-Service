@@ -21,20 +21,26 @@ export default function AccountPage() {
   useEffect(() => {
     let cancelled = false;
 
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
     const loadProfile = async () => {
       try {
         setLoading(true);
 
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error(sessionError);
+        let user = null;
+
+        for (let i = 0; i < 3; i++) {
+          const { data, error } = await supabase.auth.getUser();
+          if (!error && data.user) {
+            user = data.user;
+            break;
+          }
+          await wait(300);
         }
 
-        const user = sessionData.session?.user;
         if (!user) {
           if (!cancelled) {
             setProfile(null);
-            setLoading(false);
             router.replace("/");
           }
           return;
@@ -59,9 +65,10 @@ export default function AccountPage() {
           });
         }
       } catch (err) {
-        console.error(err);
+        console.error("Failed to load profile:", err);
         if (!cancelled) {
           setProfile(null);
+          router.replace("/");
         }
       } finally {
         if (!cancelled) {
@@ -72,22 +79,8 @@ export default function AccountPage() {
 
     loadProfile();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setProfile(null);
-        setLoading(false);
-        router.replace("/");
-        return;
-      }
-
-      loadProfile().catch(console.error);
-    });
-
     return () => {
       cancelled = true;
-      subscription.unsubscribe();
     };
   }, [router]);
 
@@ -148,7 +141,9 @@ export default function AccountPage() {
 
             <div className="text-center mb-6">
               <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-emerald-500 to-amber-500 flex items-center justify-center text-2xl font-bold text-white mb-3">
-                {profile.username?.[0]?.toUpperCase() || profile.email?.[0]?.toUpperCase() || "U"}
+                {profile.username?.[0]?.toUpperCase() ||
+                  profile.email?.[0]?.toUpperCase() ||
+                  "U"}
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 Profile picture upload WIP
