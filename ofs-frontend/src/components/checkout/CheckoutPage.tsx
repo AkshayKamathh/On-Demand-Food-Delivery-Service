@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link"; //Use Link instead of href
-import { useMemo, useState } from "react"; //Calculate something and cache it, use values that can change while user interacts
+import { useMemo, useState, useEffect} from "react"; //Calculate something and cache it, use values that can change while user interacts
 import { useCart } from "@/context/CartContext"; //Pull cart data from the cart context
+import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 //Parse weight strings like "1lb" or "3 lb" using regex for weight computations (only for front-end mockup)
 function parseWeightLb(weightString: string) {
@@ -20,6 +22,19 @@ export default function CheckoutPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const router = useRouter();
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace("/");
+        return;
+      }
+    };
+
+    checkAuth();
+  }, [router]);
 
   //Temporary frontend "business-logic" computations for subtotal, weight, etc.
   //Uses memo to only recompute when cartItems changes

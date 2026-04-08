@@ -1,11 +1,16 @@
-// src/lib/authHeaders.ts
 import { supabase } from "@/lib/supabaseClient";
 
 export async function getAuthHeaders() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
+// updated to get user, fixes account loading issue
+  const { data: userData, error: userError } = await supabase.auth.getUser();
 
-  const token = data.session?.access_token;
+  if (userError) throw userError;
+  if (!userData.user) throw new Error("Not authenticated");
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+
+  const token = sessionData.session?.access_token;
   if (!token) throw new Error("Not authenticated");
 
   return {

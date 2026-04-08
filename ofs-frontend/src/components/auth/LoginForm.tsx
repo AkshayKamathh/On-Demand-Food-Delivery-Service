@@ -16,7 +16,6 @@ import {
   subtitleClasses,
   errorClasses,
 } from "@/lib/theme-classes";
-const { data: { user } } = await supabase.auth.getUser();
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -26,40 +25,48 @@ export default function LoginForm() {
   const router = useRouter();
   const passwordVis = usePasswordVisibility();
   const [passwordFocused, setPasswordFocused] = useState(false);
-  const role = user?.user_metadata?.role;
 
-  const handleSubmit = async (e: React.SubmitEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  setError(null);
+  setLoading(true);
 
-    try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  try {
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      if (signInError) {
-        setError(signInError.message);
-        setLoading(false);
-        return;
-      }
-
-      // Logged in successfully
-      // Later when FastAPI is implemented
-      // check the users role and route to /home or /manager/dashboard
-      router.push("/userDashboard");
-
-      // if (role === 'manager') {
-      //   router.push('/manager/dashboard');
-      // } else {
-      //   router.push('/dashboard');
-      // }
-    } catch (err: any) {
-      setError(err?.message ?? "Something went wrong.");
-      setLoading(false);
+    if (signInError) {
+      setError(signInError.message);
+      return;
     }
-  };
+
+    const user = data.user;
+    if (!user) {
+      setError("No user returned after sign in.");
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      setError(profileError.message);
+      return;
+    }
+
+    router.replace(profile?.role === "manager" ? "/managerDashboard" : "/userDashboard");
+  } catch (err: any) {
+    setError(err?.message ?? "Something went wrong.");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-sm">
@@ -72,11 +79,7 @@ export default function LoginForm() {
         </p>
       </div>
 
-      {error && (
-        <div className={errorClasses + " animate-fade-slide-up"}>
-          {error}
-        </div>
-      )}
+      {error && <div className={errorClasses + " animate-fade-slide-up"}>{error}</div>}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="animate-fade-slide-up delay-200 flex flex-col gap-1.5">
@@ -118,11 +121,7 @@ export default function LoginForm() {
         </div>
 
         <div className="animate-fade-slide-up delay-400">
-          <button
-            type="submit"
-            disabled={loading}
-            className={buttonClasses}
-          >
+          <button type="submit" disabled={loading} className={buttonClasses}>
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </div>
@@ -141,10 +140,7 @@ export default function LoginForm() {
             Sign up
           </Link>
         </p>
-        <p
-          className="animate-fade-slide-up text-center"
-          style={{ animationDelay: "800ms" }}
-        >
+        <p className="animate-fade-slide-up text-center" style={{ animationDelay: "800ms" }}>
           <Link href="/forgot-password" className={linkClasses}>
             Forgot your password?
           </Link>
