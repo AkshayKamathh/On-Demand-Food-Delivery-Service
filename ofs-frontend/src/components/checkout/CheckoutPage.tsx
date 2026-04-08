@@ -357,14 +357,6 @@ export default function CheckoutPage() {
               )}
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleValidateAddress}
-                  disabled={addressValidationLoading || !address.trim()}
-                  className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-emerald-500 dark:text-zinc-950 disabled:opacity-60"
-                >
-                  {addressValidationLoading ? "Validating..." : "Validate Address"}
-                </button>
                 {addressLookupLoading && (
                   <span className="text-sm text-zinc-600 dark:text-zinc-300">
                     Searching Mapbox suggestions...
