@@ -174,7 +174,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     (sum, item) => sum + item.quantity * Number(item.weight.replace(" lb", "")),
     0
   );
-  const deliveryFee = totalWeight <= 20 ? 0 : 5.99;
+  const deliveryFee = totalWeight <= 20 ? 0 : 10;
   const total = subtotal + deliveryFee;
 
   const value = useMemo(

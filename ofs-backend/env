@@ -1,0 +1,2 @@
+SUPABASE_DB_URL=postgresql://postgres.lzxkaqiapemgcihcegii:Group5!DBPassword!@aws-0-us-west-2.pooler.supabase.com:6543/postgres
+SUPABASE_URL=https://lzxkaqiapemgcihcegii.supabase.co
