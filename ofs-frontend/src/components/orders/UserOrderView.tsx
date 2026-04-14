@@ -14,11 +14,20 @@ export default function OrderView() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
+      try {
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Auth timeout")), 6000)
+        );
+        const result: any = await Promise.race([supabase.auth.getUser(), timeout]);
+        const user = result?.data?.user;
+        if (!user) {
+          router.replace("/");
+          return;
+        }
+      } catch {
         router.replace("/");
-        return;
+      } finally {
+        setCheckingAuth(false);
       }
     };
 
