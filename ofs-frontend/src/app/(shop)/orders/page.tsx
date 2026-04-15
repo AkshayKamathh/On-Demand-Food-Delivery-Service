@@ -124,7 +124,8 @@ export default function OrdersPage() {
           <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {sorted.map((o) => {
               const placed = o.created_at ? new Date(o.created_at) : null;
-              const dateLabel = placed ? placed.toLocaleString() : "—";
+              const dateLabel = placed ? `${placed.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${placed.toLocaleTimeString([],
+               { hour: 'numeric', minute: '2-digit' })}` : "—";
               return (
                 <article
                   key={o.id}

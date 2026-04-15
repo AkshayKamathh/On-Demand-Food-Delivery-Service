@@ -275,6 +275,66 @@ def _geojson_route_overlay(coords: List[List[float]]) -> str:
     encoded = url_quote(json.dumps(feature, separators=(",", ":")), safe="")
     return f"geojson({encoded})"
 
+def _interpolate_route(coords: List[List[float]], progress: float) -> tuple[List[List[float]], List[List[float]], List[float]]:
+    """
+    Split route coords into (traveled, remaining, driver_pos) at the given progress (0..1).
+    traveled  — coords from start up to driver (inclusive of split point)
+    remaining — coords from driver to end (inclusive of split point)
+    driver_pos — [lng, lat] of the driver right now
+    """
+    if not coords:
+        return [], [], [0.0, 0.0]
+    if progress <= 0:
+        return [], list(coords), list(coords[0])
+    if progress >= 1:
+        return list(coords), [], list(coords[-1])
+
+    # Build cumulative distances
+    seg_lengths: List[float] = []
+    total = 0.0
+    for i in range(len(coords) - 1):
+        dx = coords[i + 1][0] - coords[i][0]
+        dy = coords[i + 1][1] - coords[i][1]
+        d = math.sqrt(dx * dx + dy * dy)
+        seg_lengths.append(d)
+        total += d
+
+    target = progress * total
+    accumulated = 0.0
+    traveled: List[List[float]] = [list(coords[0])]
+
+    for i, seg_len in enumerate(seg_lengths):
+        if accumulated + seg_len >= target:
+            t = (target - accumulated) / seg_len if seg_len > 0 else 0.0
+            split = [
+                coords[i][0] + t * (coords[i + 1][0] - coords[i][0]),
+                coords[i][1] + t * (coords[i + 1][1] - coords[i][1]),
+            ]
+            traveled.append(split)
+            remaining = [split] + [list(c) for c in coords[i + 1 :]]
+            return traveled, remaining, split
+        accumulated += seg_len
+        traveled.append(list(coords[i + 1]))
+
+    return list(coords), [], list(coords[-1])
+
+
+def _geojson_line_overlay(coords: List[List[float]], color: str, opacity: float = 0.85, width: int = 5) -> str:
+    """Build a GeoJSON line overlay for the Mapbox Static API."""
+    if len(coords) < 2:
+        return ""
+    feature = {
+        "type": "Feature",
+        "properties": {
+            "stroke": color,
+            "stroke-width": width,
+            "stroke-opacity": opacity,
+        },
+        "geometry": {"type": "LineString", "coordinates": coords},
+    }
+    encoded = url_quote(json.dumps(feature, separators=(",", ":")), safe="")
+    return f"geojson({encoded})"
+
 
 @router.get("/address/search", response_model=AddressSearchResponse)
 def search_delivery_addresses(q: str = Query(..., min_length=3, max_length=200)):
@@ -800,12 +860,36 @@ def get_order_map(
         end_lng=end_lng,
         end_lat=end_lat,
     )
-    route_overlay = _geojson_route_overlay(route_coords)
 
-    start_marker = f"pin-s-a+0f172a({START_LNG},{START_LAT})"
-    end_marker = f"pin-s-b+16a34a({end_lng},{end_lat})"
+    overlays: List[str] = []
 
-    overlays = ",".join([x for x in [route_overlay, start_marker, end_marker] if x])
+    if progress <= 0 or not route_coords:
+        # No movement yet — show full green route + A + B pins
+        full_line = _geojson_line_overlay(route_coords, "#16a34a")
+        if full_line:
+            overlays.append(full_line)
+        overlays.append(f"pin-s-a+0f172a({START_LNG},{START_LAT})")
+        overlays.append(f"pin-s-b+16a34a({end_lng},{end_lat})")
+    else:
+        # Driver is moving — split route into traveled (gray) + remaining (green)
+        traveled, remaining, driver_pos = _interpolate_route(route_coords, progress)
+
+        gray_line = _geojson_line_overlay(traveled, "#9ca3af", opacity=0.7, width=5)
+        if gray_line:
+            overlays.append(gray_line)
+
+        green_line = _geojson_line_overlay(remaining, "#16a34a", opacity=0.85, width=5)
+        if green_line:
+            overlays.append(green_line)
+
+        # Driver marker (orange truck pin) replaces the A pin
+        driver_lng, driver_lat = driver_pos[0], driver_pos[1]
+        overlays.append(f"pin-s+f97316({driver_lng},{driver_lat})")
+
+        # Destination B pin
+        overlays.append(f"pin-s-b+16a34a({end_lng},{end_lat})")
+
+    overlay_str = ",".join(overlays)
 
     center_lng, center_lat, zoom = _fit_map_view(
         START_LNG, START_LAT, end_lng, end_lat, width=900, height=520, padding=90
@@ -813,7 +897,7 @@ def get_order_map(
 
     static_url = (
         "https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/"
-        f"{overlays}/{center_lng},{center_lat},{zoom:.2f}/900x520@2x"
+        f"{overlay_str}/{center_lng},{center_lat},{zoom:.2f}/900x520@2x"
     )
 
     response = requests.get(

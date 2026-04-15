@@ -204,30 +204,27 @@ export default function OrderStatusPage() {
     }, 6000);
     timers.push(t2);
 
+    const intervalRef = { current: 0 };
     const t3 = window.setTimeout(() => {
       setActiveSteps((s) => ({ ...s, out: true }));
-
-      // Simulate driver movement over 12 seconds once "out for delivery". currently not working as expected.
+    
       const start = Date.now();
       const durationMs = 12000;
-      const interval = window.setInterval(() => {
+      intervalRef.current = window.setInterval(() => {
         const pct = Math.min(1, (Date.now() - start) / durationMs);
         setDriverProgress(Number(pct.toFixed(3)));
         if (pct >= 1) {
-          window.clearInterval(interval);
+          window.clearInterval(intervalRef.current);
           setActiveSteps((s) => ({ ...s, delivered: true }));
           setDeliveredBanner(true);
         }
       }, 500);
-
-      // cleanup handle stored as timer id so we can clear on unmount
-      timers.push(interval as unknown as number);
     }, 11000);
     timers.push(t3);
-
+    
     return () => {
       timers.forEach((id) => window.clearTimeout(id));
-      timers.forEach((id) => window.clearInterval(id));
+      window.clearInterval(intervalRef.current);
     };
   }, [order]);
 
