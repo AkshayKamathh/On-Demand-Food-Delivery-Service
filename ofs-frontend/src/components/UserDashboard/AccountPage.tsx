@@ -22,6 +22,8 @@ export default function AccountPage() {
     let cancelled = false;
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const timeout = (ms: number, message: string) =>
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms));
 
     const loadProfile = async () => {
       try {
@@ -30,10 +32,18 @@ export default function AccountPage() {
         let user = null;
 
         for (let i = 0; i < 3; i++) {
-          const { data, error } = await supabase.auth.getUser();
-          if (!error && data.user) {
-            user = data.user;
-            break;
+          try {
+            const result: any = await Promise.race([
+              supabase.auth.getUser(),
+              timeout(4000, "Timed out fetching user"),
+            ]);
+            const { data, error } = result;
+            if (!error && data.user) {
+              user = data.user;
+              break;
+            }
+          } catch {
+            // retry a couple times
           }
           await wait(300);
         }
@@ -46,11 +56,15 @@ export default function AccountPage() {
           return;
         }
 
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("username, avatar_url")
-          .eq("id", user.id)
-          .single();
+        const profileResult: any = await Promise.race([
+          supabase
+            .from("profiles")
+            .select("username, avatar_url")
+            .eq("id", user.id)
+            .single(),
+          timeout(8000, "Timed out loading profile"),
+        ]);
+        const { data: profileData, error: profileError } = profileResult;
 
         if (profileError) {
           console.error(profileError);

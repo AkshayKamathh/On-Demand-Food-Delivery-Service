@@ -34,40 +34,60 @@ type CartContextType = {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   const loadCart = async () => {
-  const { data } = await supabase.auth.getSession();
-  if (!data.session) {
-    setCartItems([]);
-    return;
-  }
-
-  const res = await fetch("http://localhost:8000/cart/items", {
-    headers: await getAuthHeaders(),
-  });
-
-  if (!res.ok) {
-    if (res.status === 401) {
+    let headers: Record<string, string>;
+    try {
+      headers = await getAuthHeaders();
+    } catch {
       setCartItems([]);
       return;
     }
-    throw new Error("Failed to load cart");
-  }
 
-  const dataJson = await res.json();
-    setCartItems(
-      dataJson.map((item: any) => ({
-        id: item.id,
-        item_id: item.item_id,
-        name: item.description,
-        price: Number(item.price ?? 0),
-        weight: `${Number(item.weight ?? 0).toFixed(1)} lb`,
-        quantity: item.quantity,
-        image: item.image_url ?? null,
-      }))
-    );
+    try {
+      const res = await fetchWithTimeout(
+        "http://localhost:8000/cart/items",
+        { headers },
+        10000
+      );
+
+      if (!res.ok) {
+        setCartItems([]);
+        return;
+      }
+
+      const dataJson = await res.json();
+      setCartItems(
+        dataJson.map((item: any) => ({
+          id: item.id,
+          item_id: item.item_id,
+          name: item.description,
+          price: Number(item.price ?? 0),
+          weight: `${Number(item.weight ?? 0).toFixed(1)} lb`,
+          quantity: item.quantity,
+          image: item.image_url ?? null,
+        }))
+      );
+    } catch {
+      setCartItems([]);
+    }
   };
 
   const addToCart = async (item: {
@@ -77,14 +97,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     weight: string;
     image: string | null;
   }) => {
-    const res = await fetch("http://localhost:8000/cart/items", {
-      method: "POST",
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({
-        item_id: item.id,
-        quantity: 1,
-      }),
-    });
+    const headers = await getAuthHeaders();
+    const res = await fetchWithTimeout(
+      "http://localhost:8000/cart/items",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          item_id: item.id,
+          quantity: 1,
+        }),
+      },
+      10000
+    );
 
     if (!res.ok) {
       const text = await res.text();
@@ -118,19 +143,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const updateQuantity = async (id: number, quantity: number) => {
     if (quantity <= 0) {
-      await fetch("http://localhost:8000/cart/items", {
-        method: "DELETE",
-        headers: await getAuthHeaders(),
-      });
+      const headers = await getAuthHeaders();
+      await fetchWithTimeout(
+        "http://localhost:8000/cart/items",
+        { method: "DELETE", headers },
+        10000
+      );
       setCartItems([]);
       return;
     }
 
-    const res = await fetch(`http://localhost:8000/cart/items/${id}`, {
-      method: "PATCH",
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ quantity }),
-    });
+    const headers = await getAuthHeaders();
+    const res = await fetchWithTimeout(
+      `http://localhost:8000/cart/items/${id}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ quantity }),
+      },
+      10000
+    );
 
     if (!res.ok) {
       const text = await res.text();
@@ -145,12 +177,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
   const init = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      await loadCart();
-    } else {
-      setCartItems([]);
-    }
+    await loadCart();
   };
 
   init().catch(console.error);

@@ -40,7 +40,7 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   // routes that anyone can access without an acc
-  const publicRoutes = ["/", "/login", "/signup", "/forgot-password", "reset-password"];
+  const publicRoutes = ["/", "/login", "/signup", "/forgot-password", "/reset-password"];
   const isPublic = publicRoutes.includes(pathname);
 
   if (!user && !isPublic) {

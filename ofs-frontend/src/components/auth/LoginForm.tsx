@@ -32,10 +32,15 @@ export default function LoginForm() {
   setLoading(true);
 
   try {
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const timeout = <T,>(ms: number, message: string) =>
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms));
+
+    const signInResult: any = await Promise.race([
+      supabase.auth.signInWithPassword({ email, password }),
+      timeout<any>(12000, "Signing in timed out"),
+    ]);
+
+    const { data, error: signInError } = signInResult;
 
     if (signInError) {
       setError(signInError.message);
@@ -48,11 +53,11 @@ export default function LoginForm() {
       return;
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    const profileResult: any = await Promise.race([
+      supabase.from("profiles").select("role").eq("id", user.id).single(),
+      timeout<any>(8000, "Loading profile timed out"),
+    ]);
+    const { data: profile, error: profileError } = profileResult;
 
     if (profileError) {
       setError(profileError.message);

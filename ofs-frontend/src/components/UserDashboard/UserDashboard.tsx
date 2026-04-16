@@ -65,12 +65,14 @@ export default function DashboardPage() {
         if (cancelled) return;
 
         if (!result || !("data" in result) || !result.data.user) {
+          setAuthChecking(false);
           router.replace("/");
           return;
         }
 
         setAuthChecking(false);
       } catch {
+        setAuthChecking(false);
         if (!cancelled) router.replace("/");
       }
     };
@@ -86,8 +88,13 @@ export default function DashboardPage() {
     if (authChecking) return;
 
     async function loadProducts() {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       try {
-        const res = await fetch("http://localhost:8000/catalog/products");
+        const res = await fetch("http://localhost:8000/catalog/products", {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("Failed to fetch products");
         const data: ApiProduct[] = await res.json();
 
@@ -106,6 +113,7 @@ export default function DashboardPage() {
       } catch (error) {
         console.error("Failed to load products:", error);
       } finally {
+        clearTimeout(timeoutId);
         setLoading(false);
       }
     }

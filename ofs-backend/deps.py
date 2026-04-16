@@ -3,8 +3,29 @@ from uuid import UUID
 from jose import jwt, JWTError
 import os
 import requests
+import time
+import threading
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
+
+JWKS_CACHE = {"jwks": None, "expires_at": 0.0}
+JWKS_LOCK = threading.Lock()
+JWKS_TTL_SECONDS = 3600
+
+
+def _get_jwks(jwks_url: str) -> dict:
+    now = time.time()
+    with JWKS_LOCK:
+        cached = JWKS_CACHE.get("jwks")
+        expires_at = JWKS_CACHE.get("expires_at", 0.0)
+        if cached is not None and now < expires_at:
+            return cached
+
+        jwks = requests.get(jwks_url, timeout=10).json()
+        JWKS_CACHE["jwks"] = jwks
+        JWKS_CACHE["expires_at"] = now + JWKS_TTL_SECONDS
+        return jwks
+
 
 def get_current_user_id(authorization: str = Header(None)) -> UUID:
     if not authorization or not authorization.startswith("Bearer "):
@@ -23,7 +44,7 @@ def get_current_user_id(authorization: str = Header(None)) -> UUID:
             raise HTTPException(status_code=500, detail="SUPABASE_URL is not set")
 
         jwks_url = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
-        jwks = requests.get(jwks_url, timeout=10).json()
+        jwks = _get_jwks(jwks_url)
 
         payload = jwt.decode(
             token,

@@ -88,9 +88,9 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
+      const result = await Promise.race([supabase.auth.getUser(), timeout]);
+      const user = result && "data" in result ? result.data.user : null;
 
       if (!user) {
         router.replace("/");
@@ -151,7 +151,7 @@ export default function CheckoutPage() {
         );
         await loadCart();
         await refreshSummary();
-        router.replace("/checkout");
+        router.replace(`/orders/${Number(orderId)}`);
       } catch (error) {
         setCheckoutError(error instanceof Error ? error.message : "Unable to confirm order");
       } finally {

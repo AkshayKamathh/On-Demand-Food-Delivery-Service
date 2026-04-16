@@ -40,6 +40,12 @@ export default function DashboardNavbar() {
             >
               Contact
             </Link>
+            <Link
+              href="/orders"
+              className="text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              Orders
+            </Link>
             {/* Account link */}
             <Link
               href="/dashboard/account"
