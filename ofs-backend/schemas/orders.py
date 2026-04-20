@@ -46,3 +46,32 @@ class OrderDeliveredResponse(BaseModel):
     status: str
     delivered_at: datetime
 
+
+VALID_ORDER_STATUSES = {
+    "pending_payment",
+    "submitted",
+    "preparing",
+    "out_for_delivery",
+    "delivered",
+    "cancelled",
+}
+
+
+class ManagerOrderListItem(BaseModel):
+    id: int
+    created_at: datetime
+    total: float
+    status: str
+    recipient_name: str
+    email: str
+    delivery_address: str
+
+
+class OrderStatusUpdate(BaseModel):
+    status: str
+
+
+class OrderStatusUpdateResponse(BaseModel):
+    order_id: int
+    status: str
+

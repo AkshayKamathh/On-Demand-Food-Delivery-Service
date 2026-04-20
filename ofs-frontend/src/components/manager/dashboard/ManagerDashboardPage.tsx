@@ -12,23 +12,42 @@ type InventoryItem = {
   status: string;
 };
 
+type ManagerOrder = {
+  id: number;
+  created_at: string;
+  total: number;
+  status: string;
+  recipient_name: string;
+  email: string;
+  delivery_address: string;
+};
+
+const ORDER_STATUSES = [
+  { value: "pending_payment", label: "Pending Payment" },
+  { value: "submitted", label: "Order Received" },
+  { value: "preparing", label: "Preparing" },
+  { value: "out_for_delivery", label: "Out for Delivery" },
+  { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function ManagerDashboardPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  //(Optional) keep your existing KPI + orders mock data for now
+  const [orders, setOrders] = useState<ManagerOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState("");
+  const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
+
   const kpis = [
     { label: "Today’s Sales", value: "$1,284.50" },
     { label: "Orders In Progress", value: "6" },
     { label: "Low Stock Items", value: "4" },
     { label: "Robot Load", value: "3 / 10 orders" },
-  ];
-
-  const recentOrders = [
-    { id: "ORD-1203", customer: "Maria G.", total: "$38.25", weight: "18.3 lb", status: "Preparing" },
-    { id: "ORD-1204", customer: "James K.", total: "$64.10", weight: "25.9 lb", status: "Out for delivery" },
-    { id: "ORD-1205", customer: "Aisha R.", total: "$22.80", weight: "9.4 lb", status: "Delivered" },
   ];
 
   const [showAdd, setShowAdd] = useState(false);
@@ -78,7 +97,7 @@ export default function ManagerDashboardPage() {
         stock: stockNum,
       };
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const baseUrl = BASE_URL;
       const res = await fetch(`${baseUrl}/inventory`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -121,7 +140,7 @@ export default function ManagerDashboardPage() {
       setLoading(true);
       setError("");
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const baseUrl = BASE_URL;
       const res = await fetch(`${baseUrl}/inventory`);
 
       if (!res.ok) {
@@ -183,7 +202,7 @@ export default function ManagerDashboardPage() {
         return;
       }
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const baseUrl = BASE_URL;
       const res = await fetch(`${baseUrl}/inventory/${encodeURIComponent(sku)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -230,7 +249,7 @@ export default function ManagerDashboardPage() {
       setError("");
       setSaveMsg("");
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const baseUrl = BASE_URL;
       const res = await fetch(`${baseUrl}/inventory/${encodeURIComponent(sku)}`, {
         method: "DELETE",
       });
@@ -257,9 +276,48 @@ export default function ManagerDashboardPage() {
     }
   }
 
-  //Run loadInventory() once when page first boots up
+  async function loadOrders() {
+    try {
+      setOrdersLoading(true);
+      setOrdersError("");
+      const res = await fetch(`${BASE_URL}/manager/orders`);
+      if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+      const data = (await res.json()) as ManagerOrder[];
+      setOrders(data);
+    } catch (e: any) {
+      setOrdersError(e?.message ?? "Failed to load orders");
+    } finally {
+      setOrdersLoading(false);
+    }
+  }
+
+  async function updateOrderStatus(orderId: number, newStatus: string) {
+    try {
+      setUpdatingOrderId(orderId);
+      const res = await fetch(`${BASE_URL}/manager/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.detail ?? `HTTP ${res.status}`);
+      }
+      const updated = await res.json();
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: updated.status } : o))
+      );
+    } catch (e: any) {
+      setOrdersError(`Failed to update order ${orderId}: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  }
+
+  //Run loadInventory() and loadOrders() once when page first boots up
   useEffect(() => {
     loadInventory();
+    loadOrders();
   }, []);
 
   return (
@@ -496,16 +554,56 @@ export default function ManagerDashboardPage() {
             <aside className="grid gap-4">
               {/* Orders panel */}
               <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-5">
-                <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Orders & History</h2>
-                <div className="mt-4 grid gap-3">
-                  {recentOrders.map((o) => (
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Orders & History</h2>
+                  <button
+                    onClick={loadOrders}
+                    className="px-3 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-600 text-sm text-zinc-900 dark:text-zinc-100 hover:bg-white/60 dark:hover:bg-zinc-900/30"
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                {ordersError && (
+                  <p className="mt-2 text-sm text-red-600">{ordersError}</p>
+                )}
+
+                <div className="mt-4 grid gap-3 max-h-[480px] overflow-y-auto pr-1">
+                  {ordersLoading && (
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300">Loading orders…</p>
+                  )}
+
+                  {!ordersLoading && orders.length === 0 && (
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300">No orders found.</p>
+                  )}
+
+                  {orders.map((o) => (
                     <div key={o.id} className="rounded-xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="text-zinc-800 dark:text-zinc-300 font-semibold">{o.id}</div>
-                        <span className={statusBadge(o.status)}>{o.status}</span>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-zinc-800 dark:text-zinc-300 font-semibold text-sm">
+                          #{o.id}
+                        </div>
+                        <span className={statusBadge(o.status)}>{statusLabel(o.status)}</span>
                       </div>
-                      <div className="mt-1 text-sm text-zinc-800 dark:text-zinc-300">
-                        {o.customer} • {o.total} • {o.weight}
+                      <div className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                        {o.recipient_name} • ${o.total.toFixed(2)}
+                      </div>
+                      <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                        {new Date(o.created_at).toLocaleDateString()}
+                      </div>
+                      <div className="mt-2">
+                        <select
+                          disabled={updatingOrderId === o.id}
+                          value={o.status}
+                          onChange={(e) => updateOrderStatus(o.id, e.target.value)}
+                          className="w-full px-2 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 text-sm disabled:opacity-50"
+                        >
+                          {ORDER_STATUSES.map((s) => (
+                            <option key={s.value} value={s.value} className="bg-white dark:bg-zinc-800">
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   ))}
@@ -545,13 +643,31 @@ export default function ManagerDashboardPage() {
 const inputClass =
   "px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-transparent text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500";
 
+function statusLabel(status: string): string {
+  return ORDER_STATUSES.find((s) => s.value === status)?.label ?? status;
+}
+
 function statusBadge(status: string) {
   const base = "inline-flex items-center px-2.5 py-1 rounded-full text-xs border";
-  const s = String(status).toLowerCase();
-
-  if (s.includes("out")) return `${base} border-red-300/80 dark:border-red-500/40 text-red-600 dark:text-red-300 bg-red-50/60 dark:bg-red-900/20`;
-  if (s.includes("low")) return `${base} border-amber-300/80 dark:border-amber-500/40 text-amber-700 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-900/20`;
-  if (s.includes("deliver")) return `${base} border-sky-300/80 dark:border-sky-500/40 text-sky-700 dark:text-sky-200 bg-sky-50/60 dark:bg-sky-900/20`;
-  if (s.includes("prep")) return `${base} border-violet-300/80 dark:border-violet-500/40 text-violet-700 dark:text-violet-200 bg-violet-50/60 dark:bg-violet-900/20`;
-  return `${base} border-emerald-300/80 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-200 bg-emerald-50/60 dark:bg-emerald-900/20`;
+  switch (status) {
+    case "pending_payment":
+      return `${base} border-amber-300/80 dark:border-amber-500/40 text-amber-700 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-900/20`;
+    case "submitted":
+      return `${base} border-blue-300/80 dark:border-blue-500/40 text-blue-700 dark:text-blue-200 bg-blue-50/60 dark:bg-blue-900/20`;
+    case "preparing":
+      return `${base} border-violet-300/80 dark:border-violet-500/40 text-violet-700 dark:text-violet-200 bg-violet-50/60 dark:bg-violet-900/20`;
+    case "out_for_delivery":
+      return `${base} border-orange-300/80 dark:border-orange-500/40 text-orange-700 dark:text-orange-200 bg-orange-50/60 dark:bg-orange-900/20`;
+    case "delivered":
+      return `${base} border-sky-300/80 dark:border-sky-500/40 text-sky-700 dark:text-sky-200 bg-sky-50/60 dark:bg-sky-900/20`;
+    case "cancelled":
+      return `${base} border-red-300/80 dark:border-red-500/40 text-red-600 dark:text-red-300 bg-red-50/60 dark:bg-red-900/20`;
+    // inventory statuses
+    default: {
+      const s = String(status).toLowerCase();
+      if (s.includes("out")) return `${base} border-red-300/80 dark:border-red-500/40 text-red-600 dark:text-red-300 bg-red-50/60 dark:bg-red-900/20`;
+      if (s.includes("low")) return `${base} border-amber-300/80 dark:border-amber-500/40 text-amber-700 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-900/20`;
+      return `${base} border-emerald-300/80 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-200 bg-emerald-50/60 dark:bg-emerald-900/20`;
+    }
+  }
 }
