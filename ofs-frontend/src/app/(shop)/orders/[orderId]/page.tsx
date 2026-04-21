@@ -1,10 +1,24 @@
+// src/app/(shop)/orders/[orderId]/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthHeaders } from "@/lib/authHeaders";
+
+const MapComponent = dynamic(
+  () => import("@/components/MapComponent").then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center text-sm text-zinc-600 dark:text-zinc-300">
+        Loading map…
+      </div>
+    ),
+  }
+);
 
 type OrderItem = {
   item_id: number;
@@ -67,13 +81,22 @@ export default function OrderStatusPage() {
   });
 
   const [driverProgress, setDriverProgress] = useState(0);
+  const driverProgressRef = useRef(0);
+  // Holds the update function handed to us by MapComponent once its map is loaded
+  const updateMapPositionRef = useRef<((progress: number) => void) | null>(null);
+
   const simulationStarted = useRef(false);
   const deliveryMarked = useRef(false);
-  const [mapObjectUrl, setMapObjectUrl] = useState<string | null>(null);
-  const [mapLoading, setMapLoading] = useState(false);
-  const [mapError, setMapError] = useState<string>("");
-  const lastMapUrl = useRef<string | null>(null);
 
+  // Called by MapComponent when the map + route are fully loaded.
+  // Immediately apply whatever progress the simulation is already at —
+  // this handles the "already delivered" edge case cleanly.
+  const handleMapReady = useCallback((updateFn: (progress: number) => void) => {
+    updateMapPositionRef.current = updateFn;
+    updateFn(driverProgressRef.current);
+  }, []);
+
+  // Auth + order + ETA load
   useEffect(() => {
     let cancelled = false;
 
@@ -92,9 +115,7 @@ export default function OrderStatusPage() {
         setLoading(true);
         setError("");
 
-        if (!orderId || Number.isNaN(orderId)) {
-          throw new Error("Invalid order id");
-        }
+        if (!orderId || Number.isNaN(orderId)) throw new Error("Invalid order id");
 
         const ok = await checkAuth();
         if (!ok || cancelled) return;
@@ -112,7 +133,6 @@ export default function OrderStatusPage() {
         }
 
         if (!etaRes.ok) {
-          // ETA nice-to-have; don't hard fail.
           setEtaSeconds(0);
         } else {
           const payload = (await etaRes.json()) as any;
@@ -129,110 +149,67 @@ export default function OrderStatusPage() {
     };
 
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [orderId, router]);
 
-  useEffect(() => {
-    if (!orderId || !order) return;
-
-    let cancelled = false;
-    let aborter: AbortController | null = null;
-    const debounceId = window.setTimeout(async () => {
-      try {
-        setMapLoading(true);
-        setMapError("");
-        aborter = new AbortController();
-
-        const headers = await getAuthHeaders();
-        const ts = Date.now();
-        const url = `http://localhost:8000/checkout/orders/${orderId}/map?progress=${driverProgress}&t=${ts}`;
-        const res = await fetch(url, {
-          headers,
-          signal: aborter.signal,
-        });
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          setMapError(text || `Map request failed (${res.status})`);
-          return;
-        }
-        const blob = await res.blob();
-        if (cancelled) return;
-
-        const objectUrl = URL.createObjectURL(blob);
-        if (lastMapUrl.current) URL.revokeObjectURL(lastMapUrl.current);
-        lastMapUrl.current = objectUrl;
-        setMapObjectUrl(objectUrl);
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setMapLoading(false);
-      }
-    }, activeSteps.out ? 250 : 0); // update frequently only during animation
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(debounceId);
-      if (aborter) aborter.abort();
-    };
-  }, [orderId, order, driverProgress, activeSteps.out]);
-
+  // Delivery simulation — drives both the step tracker and the map marker
   useEffect(() => {
     if (!order || simulationStarted.current) return;
 
-    // If already delivered in DB, show completed state immediately.
+    // Already delivered in DB — snap everything to the end state
     if ((order.status ?? "").toLowerCase() === "delivered") {
       setActiveSteps({ received: true, preparing: true, out: true, delivered: true });
+      driverProgressRef.current = 1;
       setDriverProgress(1);
       setDeliveredBanner(true);
       simulationStarted.current = true;
+      // Map might not be ready yet; handleMapReady will call updateFn(1) when it fires
+      updateMapPositionRef.current?.(1);
       return;
     }
 
     simulationStarted.current = true;
-
     const timers: number[] = [];
 
-    const t1 = window.setTimeout(() => {
-      setActiveSteps((s) => ({ ...s, received: true }));
-    }, 3000);
-    timers.push(t1);
+    timers.push(window.setTimeout(() => setActiveSteps((s) => ({ ...s, received: true })), 3000));
+    timers.push(window.setTimeout(() => setActiveSteps((s) => ({ ...s, preparing: true })), 6000));
 
-    const t2 = window.setTimeout(() => {
-      setActiveSteps((s) => ({ ...s, preparing: true }));
-    }, 6000);
-    timers.push(t2);
+    const progressIntervalRef = { current: 0 };
 
-    const intervalRef = { current: 0 };
-    const t3 = window.setTimeout(() => {
-      setActiveSteps((s) => ({ ...s, out: true }));
-    
-      const start = Date.now();
-      const durationMs = 12000;
-      intervalRef.current = window.setInterval(() => {
-        const pct = Math.min(1, (Date.now() - start) / durationMs);
-        setDriverProgress(Number(pct.toFixed(3)));
-        if (pct >= 1) {
-          window.clearInterval(intervalRef.current);
-          setActiveSteps((s) => ({ ...s, delivered: true }));
-          setDeliveredBanner(true);
-        }
-      }, 500);
-    }, 11000);
-    timers.push(t3);
-    
+    timers.push(
+      window.setTimeout(() => {
+        setActiveSteps((s) => ({ ...s, out: true }));
+
+        const start = Date.now();
+        const durationMs = 12000;
+
+        progressIntervalRef.current = window.setInterval(() => {
+          const pct = Math.min(1, (Date.now() - start) / durationMs);
+          const p = Number(pct.toFixed(3));
+
+          driverProgressRef.current = p;
+          setDriverProgress(p);
+          // Direct call into the map — no React state, no re-renders, no network
+          updateMapPositionRef.current?.(p);
+
+          if (pct >= 1) {
+            window.clearInterval(progressIntervalRef.current);
+            setActiveSteps((s) => ({ ...s, delivered: true }));
+            setDeliveredBanner(true);
+          }
+        }, 100); // 100ms = smooth animation, pure in-memory marker move
+      }, 11000)
+    );
+
     return () => {
-      timers.forEach((id) => window.clearTimeout(id));
-      window.clearInterval(intervalRef.current);
+      timers.forEach(window.clearTimeout);
+      window.clearInterval(progressIntervalRef.current);
     };
   }, [order]);
 
+  // Mark order delivered in DB once the simulation finishes
   useEffect(() => {
-    if (!order) return;
-    if (!activeSteps.delivered) return;
-    if (deliveryMarked.current) return;
-
+    if (!order || !activeSteps.delivered || deliveryMarked.current) return;
     deliveryMarked.current = true;
 
     const mark = async () => {
@@ -254,7 +231,7 @@ export default function OrderStatusPage() {
           );
         }
       } catch {
-        // If this fails, the UI still completes; the DB update can be retried later.
+        // Non-critical — UI is already complete
       }
     };
 
@@ -263,7 +240,6 @@ export default function OrderStatusPage() {
 
   const receiptPlacedAt = order?.created_at ? new Date(order.created_at) : null;
   const placedLabel = receiptPlacedAt ? receiptPlacedAt.toLocaleString() : "—";
-
   const totalItems = order?.items?.reduce((sum, i) => sum + (i.quantity ?? 0), 0) ?? 0;
 
   if (loading) {
@@ -310,7 +286,7 @@ export default function OrderStatusPage() {
               Back to orders
             </Link>
           </div>
-  
+
           {deliveredBanner && (
             <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-500/10 p-4 text-emerald-800 dark:text-emerald-200">
               <div className="font-semibold">Your order has been delivered!</div>
@@ -320,7 +296,7 @@ export default function OrderStatusPage() {
             </div>
           )}
         </header>
-  
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <section className="lg:col-span-2 space-y-6">
             <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/40 p-6 shadow-sm">
@@ -329,7 +305,7 @@ export default function OrderStatusPage() {
                 Estimated time of delivery:{" "}
                 <span className="font-medium">{formatDuration(etaSeconds)}</span>
               </p>
-  
+
               <ol className="mt-5 grid gap-3">
                 {(Object.keys(stepLabel) as StepKey[]).map((key, idx) => {
                   const done = activeSteps[key];
@@ -360,34 +336,19 @@ export default function OrderStatusPage() {
                 })}
               </ol>
             </div>
-  
+
             <div className="relative">
               <div className="absolute -inset-4 bg-emerald-500/10 dark:bg-emerald-500/10 blur-3xl rounded-3xl" />
-  
+
               <div className="relative rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 overflow-hidden shadow-xl">
-                <div className="relative w-full aspect-[16/9] bg-zinc-100/70 dark:bg-zinc-900/50">
-                  {mapObjectUrl ? (
-                    <img
-                      src={mapObjectUrl}
-                      alt="Map showing route from OFS Grocery to delivery location"
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center text-sm text-zinc-600 dark:text-zinc-300">
-                      {mapError ? `Map error: ${mapError}` : "Loading map…"}
-                    </div>
-                  )}
-  
-                  <div className="absolute left-4 top-4 flex flex-col gap-2">
-                    <span className="rounded-full bg-white/90 dark:bg-zinc-950/80 px-2 py-0.5 text-[10px] font-medium text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800">
-                      OFS Grocery (start)
-                    </span>
-                    <span className="rounded-full bg-white/90 dark:bg-zinc-950/80 px-2 py-0.5 text-[10px] font-medium text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800">
-                      Destination
-                    </span>
-                  </div>
+                <div className="relative w-full aspect-[16/9]">
+                  <MapComponent
+                    endLng={order.delivery_address_longitude}
+                    endLat={order.delivery_address_latitude}
+                    onReady={handleMapReady}
+                  />
                 </div>
-  
+
                 <div className="p-5 space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -406,7 +367,7 @@ export default function OrderStatusPage() {
                             : "Order received"}
                     </span>
                   </div>
-  
+
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div className="rounded-xl bg-zinc-100/80 dark:bg-zinc-900/70 px-3 py-2">
                       <p className="text-[11px] text-zinc-500 dark:text-zinc-500">ETA</p>
@@ -421,13 +382,13 @@ export default function OrderStatusPage() {
                       </p>
                     </div>
                     <div className="rounded-xl bg-zinc-100/80 dark:bg-zinc-900/70 px-3 py-2">
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-500">Map</p>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-500">Progress</p>
                       <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                        {mapLoading ? "Updating…" : activeSteps.out ? "Live" : "Ready"}
+                        {Math.round(driverProgress * 100)}%
                       </p>
                     </div>
                   </div>
-  
+
                   {!activeSteps.out && (
                     <p className="text-sm text-zinc-600 dark:text-zinc-300">
                       Route is shown now. The driver starts moving once the order is out for delivery.
@@ -437,14 +398,17 @@ export default function OrderStatusPage() {
               </div>
             </div>
           </section>
-  
+
           <aside className="space-y-6">
             <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/40 p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Receipt</h2>
-  
+
               <div className="mt-4 space-y-3">
                 {order.items.map((item) => (
-                  <div key={`${item.item_id}-${item.description}`} className="flex justify-between gap-3">
+                  <div
+                    key={`${item.item_id}-${item.description}`}
+                    className="flex justify-between gap-3"
+                  >
                     <div>
                       <div className="font-medium">{item.description}</div>
                       <div className="text-xs text-zinc-600 dark:text-zinc-300">
@@ -455,7 +419,7 @@ export default function OrderStatusPage() {
                   </div>
                 ))}
               </div>
-  
+
               <div className="mt-6 border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-zinc-600 dark:text-zinc-300">Subtotal</span>
@@ -470,12 +434,12 @@ export default function OrderStatusPage() {
                   <span className="font-semibold">${Number(order.total).toFixed(2)}</span>
                 </div>
               </div>
-  
+
               <div className="mt-6 rounded-2xl bg-zinc-100/70 dark:bg-zinc-950/30 p-4 text-sm">
                 <div className="font-semibold">Delivery to</div>
                 <div className="text-zinc-700 dark:text-zinc-200">{order.recipient_name}</div>
                 <div className="text-zinc-600 dark:text-zinc-300">{order.email}</div>
-                <div className="mt-2 text-zinc-700 dark:text-zinc-200">{order.delivery_address}</div>
+                <div className="mt-2 text-zinc-zinc-700 dark:text-zinc-200">{order.delivery_address}</div>
                 {order.delivery_notes && (
                   <div className="mt-2 text-zinc-600 dark:text-zinc-300">
                     Notes: {order.delivery_notes}

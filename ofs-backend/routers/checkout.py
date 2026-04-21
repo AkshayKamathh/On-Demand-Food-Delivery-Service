@@ -816,10 +816,6 @@ def _fit_map_view(start_lng: float, start_lat: float, end_lng: float, end_lat: f
     safe_width = max(1, width - 2 * padding)
     safe_height = max(1, height - 2 * padding)
 
-    # Convert degree span to an approximate zoom fit.
-    lon_zoom = 360 / lon_span if lon_span > 0 else float("inf")
-    lat_zoom = 170 / lat_span if lat_span > 0 else float("inf")
-
     zoom_x = math.log2((safe_width * 360) / (256 * lon_span)) if lon_span > 0 else 14
     zoom_y = math.log2((safe_height * 170) / (256 * lat_span)) if lat_span > 0 else 14
 
