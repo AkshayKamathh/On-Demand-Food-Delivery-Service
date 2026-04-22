@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
 import Navbar from "@/components/ui/NavBar";
@@ -8,11 +8,6 @@ const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
-
-// const geistMono = Geist_Mono({
-//   variable: "--font-geist-mono",
-//   subsets: ["latin"],
-// });
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -26,7 +21,13 @@ export default function RootLayout({
 }>) {
   return (
     <html suppressHydrationWarning lang="en">
-      <body>
+      <head>
+        <link
+          href="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css"
+          rel="stylesheet"
+        />
+      </head>
+      <body className={geistSans.variable}>
         <ThemeProvider>
           <Navbar />
           <main>{children}</main>
