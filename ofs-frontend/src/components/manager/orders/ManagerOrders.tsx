@@ -107,7 +107,7 @@ export default function ManagerOrdersPage() {
   return (
     <>
       <ManagerNavbar />
-      <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-zinc-100 to-zinc-100 dark:from-zinc-950 dark:via-emerald-950/20 dark:to-zinc-950 p-6">
+      <main className="min-h-screen bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 p-6">
         <div className="mx-auto w-full max-w-6xl">
           <div className="bg-white/80 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/50 backdrop-blur-sm rounded-2xl p-7 shadow-xl shadow-black/10 dark:shadow-black/30">
 

@@ -11,8 +11,8 @@ import {
   Package,
 } from "lucide-react";
 
-// ── Placeholder / mock data 
-// Replace with real API calls to backend later
+// ── Placeholder / mock data ────────────────────────────────────────────────
+// Replace with real API calls to your backend when ready.
 
 const MONTHLY_REVENUE = [
   { month: "Jan", revenue: 4200 },
@@ -30,10 +30,10 @@ const MONTHLY_REVENUE = [
 ];
 
 const TOP_PRODUCTS = [
-  { name: "Bananas", sku: "001", units: 312, revenue: 936 },
-  { name: "Tomatoes",    sku: "004", units: 278, revenue: 834 },
-  { name: "Lettuce",         sku: "007", units: 241, revenue: 482 },
-  { name: "Apples",          sku: "002", units: 215, revenue: 430 },
+  { name: "Organic Strawberries", sku: "001", units: 312, revenue: 936 },
+  { name: "Heirloom Tomatoes",    sku: "004", units: 278, revenue: 834 },
+  { name: "Baby Spinach",         sku: "007", units: 241, revenue: 482 },
+  { name: "Fuji Apples",          sku: "002", units: 215, revenue: 430 },
   { name: "Greek Yogurt",         sku: "015", units: 198, revenue: 594 },
 ];
 
@@ -45,10 +45,10 @@ const CATEGORY_BREAKDOWN = [
 ];
 
 const STAT_CARDS = [
-  { label: "Total Revenue (YTD)", value: "$2", icon: DollarSign},
-  { label: "Total Orders",        value: "2,341",   icon: ShoppingBag},
-  { label: "Unique Customers",    value: "847",     icon: Users},
-  { label: "Items Sold",          value: "8,912",   icon: Package},
+  { label: "Total Revenue (YTD)", value: "$5", icon: DollarSign },
+  { label: "Total Orders",        value: "21232",   icon: ShoppingBag },
+  { label: "Unique Customers",    value: "2",     icon: Users},
+  { label: "Items Sold",          value: "5000",   icon: Package},
 ];
 
 const MAX_REVENUE = Math.max(...MONTHLY_REVENUE.map((m) => m.revenue));
@@ -56,11 +56,10 @@ const MAX_REVENUE = Math.max(...MONTHLY_REVENUE.map((m) => m.revenue));
 
 export default function ManagerSalesPage() {
 
-
   return (
     <>
       <ManagerNavbar />
-      <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-zinc-100 to-zinc-100 dark:from-zinc-950 dark:via-emerald-950/20 dark:to-zinc-950 p-6">
+      <main className="min-h-screen bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 p-6">
         <div className="mx-auto w-full max-w-6xl space-y-6">
 
           {/* Header card */}
@@ -68,10 +67,10 @@ export default function ManagerSalesPage() {
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="text-2xl md:text-3xl font-semibold text-zinc-900 dark:text-zinc-100">
-                  Sales &amp; Reports - Not Connected to backend yet
+                  Sales &amp; Reports - Mock Data, not connected to backend
                 </h1>
                 <p className="mt-1 text-zinc-600 dark:text-zinc-300">
-                  Revenue analytics and product performance - Mock data for now
+                  Revenue analytics and product performance
                 </p>
               </div>
             </div>
