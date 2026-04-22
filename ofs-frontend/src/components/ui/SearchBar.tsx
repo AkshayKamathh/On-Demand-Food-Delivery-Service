@@ -24,9 +24,6 @@ export default function SearchBar({
       { label: "Vegetables", value: "vegetables" },
       { label: "Dairy", value: "dairy" },
       { label: "Bakery", value: "bakery" },
-      { label: "Snack", value: "snack" },
-      { label: "Meal", value: "meal" },
-      { label: "Drink", value: "drink" },
     ],
     []
   );
