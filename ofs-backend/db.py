@@ -12,7 +12,11 @@ if not DATABASE_URL:
 
 @contextmanager
 def get_db():
-    # psycopg3 connection
-    with psycopg.connect(DATABASE_URL) as conn:
+    # prepare_threshold=None disables psycopg3's implicit server-side prepared
+    # statements. Required because Supabase's transaction-mode pooler recycles
+    # backends across connections, and a backend can already hold a prepared
+    # statement named "_pg3_0" from a prior client — causing
+    # DuplicatePreparedStatement on the next checkout.
+    with psycopg.connect(DATABASE_URL, prepare_threshold=None) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             yield conn, cur

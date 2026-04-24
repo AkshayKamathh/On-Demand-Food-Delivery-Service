@@ -1,18 +1,23 @@
 import os
 import json
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List
-from urllib.parse import quote, quote as url_quote
+from urllib.parse import quote
 from uuid import UUID
 
 import math
 import requests
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
 
 from db import get_db
 from deps import get_current_user_id
+from routers.dispatch import (
+    SIMULATION_SPEED,
+    _parse_legs,
+    _reconcile_trip_progress,
+)
 from schemas.checkout import (
     AddressSearchResponse,
     AddressSuggestion,
@@ -25,6 +30,7 @@ from schemas.checkout import (
     OrderConfirmationResponse,
     ValidatedAddress,
 )
+from schemas.dispatch import CustomerStopMarker, CustomerTripView, LegPlan
 from schemas.orders import OrderDeliveredResponse, OrderDetail, OrderItem, OrderListItem
 
 router = APIRouter(prefix="/checkout", tags=["checkout"])
@@ -190,150 +196,6 @@ def mapbox_directions_eta_seconds(*, start_lng: float, start_lat: float, end_lng
         return 0
     duration = routes[0].get("duration") or 0
     return int(duration)
-
-
-def mapbox_directions_geometry(
-    *, start_lng: float, start_lat: float, end_lng: float, end_lat: float
-) -> List[List[float]]:
-    if not MAPBOX_ACCESS_TOKEN:
-        raise HTTPException(status_code=500, detail="MAPBOX_ACCESS_TOKEN is not set")
-
-    response = requests.get(
-        f"https://api.mapbox.com/directions/v5/mapbox/driving/{start_lng},{start_lat};{end_lng},{end_lat}",
-        params={
-            "access_token": MAPBOX_ACCESS_TOKEN,
-            "geometries": "geojson",
-            "overview": "simplified",
-        },
-        timeout=10,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    routes = payload.get("routes") or []
-    if not routes:
-        return []
-
-    geometry = routes[0].get("geometry") or {}
-    coords = geometry.get("coordinates") or []
-    return coords
-
-
-def _encode_polyline(coords: List[List[float]], *, precision: int) -> str:
-    """
-    Encodes coordinates (lng, lat) into a polyline string.
-
-    precision=5 -> polyline (1e5)
-    precision=6 -> polyline6 (1e6)
-    """
-
-    def encode_value(v: int) -> str:
-        v = ~(v << 1) if v < 0 else (v << 1)
-        chunks = []
-        while v >= 0x20:
-            chunks.append(chr((0x20 | (v & 0x1F)) + 63))
-            v >>= 5
-        chunks.append(chr(v + 63))
-        return "".join(chunks)
-
-    last_lat = 0
-    last_lng = 0
-    out: List[str] = []
-
-    scale = 10**precision
-
-    for lng, lat in coords:
-        lat_i = int(round(lat * scale))
-        lng_i = int(round(lng * scale))
-        out.append(encode_value(lat_i - last_lat))
-        out.append(encode_value(lng_i - last_lng))
-        last_lat = lat_i
-        last_lng = lng_i
-
-    return "".join(out)
-
-
-def _geojson_route_overlay(coords: List[List[float]]) -> str:
-    """
-    Build a Mapbox Static API geojson(...) overlay for the route line.
-    This is more robust than polyline overlays and avoids precision pitfalls.
-    """
-    if not coords:
-        return ""
-
-    feature = {
-        "type": "Feature",
-        "properties": {
-            "stroke": "#16a34a",
-            "stroke-width": 5,
-            "stroke-opacity": 0.7,
-        },
-        "geometry": {
-            "type": "LineString",
-            "coordinates": coords,
-        },
-    }
-    encoded = url_quote(json.dumps(feature, separators=(",", ":")), safe="")
-    return f"geojson({encoded})"
-
-def _interpolate_route(coords: List[List[float]], progress: float) -> tuple[List[List[float]], List[List[float]], List[float]]:
-    """
-    Split route coords into (traveled, remaining, driver_pos) at the given progress (0..1).
-    traveled  — coords from start up to driver (inclusive of split point)
-    remaining — coords from driver to end (inclusive of split point)
-    driver_pos — [lng, lat] of the driver right now
-    """
-    if not coords:
-        return [], [], [0.0, 0.0]
-    if progress <= 0:
-        return [], list(coords), list(coords[0])
-    if progress >= 1:
-        return list(coords), [], list(coords[-1])
-
-    # Build cumulative distances
-    seg_lengths: List[float] = []
-    total = 0.0
-    for i in range(len(coords) - 1):
-        dx = coords[i + 1][0] - coords[i][0]
-        dy = coords[i + 1][1] - coords[i][1]
-        d = math.sqrt(dx * dx + dy * dy)
-        seg_lengths.append(d)
-        total += d
-
-    target = progress * total
-    accumulated = 0.0
-    traveled: List[List[float]] = [list(coords[0])]
-
-    for i, seg_len in enumerate(seg_lengths):
-        if accumulated + seg_len >= target:
-            t = (target - accumulated) / seg_len if seg_len > 0 else 0.0
-            split = [
-                coords[i][0] + t * (coords[i + 1][0] - coords[i][0]),
-                coords[i][1] + t * (coords[i + 1][1] - coords[i][1]),
-            ]
-            traveled.append(split)
-            remaining = [split] + [list(c) for c in coords[i + 1 :]]
-            return traveled, remaining, split
-        accumulated += seg_len
-        traveled.append(list(coords[i + 1]))
-
-    return list(coords), [], list(coords[-1])
-
-
-def _geojson_line_overlay(coords: List[List[float]], color: str, opacity: float = 0.85, width: int = 5) -> str:
-    """Build a GeoJSON line overlay for the Mapbox Static API."""
-    if len(coords) < 2:
-        return ""
-    feature = {
-        "type": "Feature",
-        "properties": {
-            "stroke": color,
-            "stroke-width": width,
-            "stroke-opacity": opacity,
-        },
-        "geometry": {"type": "LineString", "coordinates": coords},
-    }
-    encoded = url_quote(json.dumps(feature, separators=(",", ":")), safe="")
-    return f"geojson({encoded})"
 
 
 @router.get("/address/search", response_model=AddressSearchResponse)
@@ -622,7 +484,7 @@ def confirm_checkout(
             """
             UPDATE public.orders
             SET
-              status = 'submitted',
+              status = 'preparing',
               payment_status = 'paid',
               stripe_payment_intent_id = %(payment_intent_id)s,
               paid_at = now(),
@@ -679,28 +541,54 @@ def list_orders(user_id: UUID = Depends(get_current_user_id)):
 @router.get("/orders/{order_id}", response_model=OrderDetail)
 def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
     with get_db() as (conn, cur):
+        # Reconcile any milestones the simulator clock has crossed for this
+        # order's trip so the response reflects the live state.
+        cur.execute(
+            """
+            SELECT t.id, t.robot_id, t.status, t.order_count, t.current_stop,
+                   t.started_at, t.legs_geojson
+            FROM public.delivery_trips t
+            JOIN public.orders o ON o.delivery_trip_id = t.id
+            WHERE o.id = %(order_id)s AND o.user_id = %(user_id)s
+              AND t.status = 'in_progress'
+            """,
+            {"order_id": order_id, "user_id": str(user_id)},
+        )
+        trip_row = cur.fetchone()
+        if trip_row:
+            _reconcile_trip_progress(cur, trip_row)
+            conn.commit()
+
         cur.execute(
             """
             SELECT
-              id,
-              user_id,
-              status,
-              payment_status,
-              subtotal,
-              delivery_fee,
-              total,
-              currency,
-              recipient_name,
-              email,
-              delivery_address,
-              delivery_address_latitude,
-              delivery_address_longitude,
-              delivery_notes,
-              paid_at,
-              delivered_at,
-              created_at
-            FROM public.orders
-            WHERE id = %(order_id)s AND user_id = %(user_id)s
+              o.id,
+              o.user_id,
+              o.status,
+              o.payment_status,
+              o.subtotal,
+              o.delivery_fee,
+              o.total,
+              o.currency,
+              o.recipient_name,
+              o.email,
+              o.delivery_address,
+              o.delivery_address_latitude,
+              o.delivery_address_longitude,
+              o.delivery_notes,
+              o.paid_at,
+              o.delivered_at,
+              o.created_at,
+              o.delivery_trip_id,
+              o.trip_stop_sequence,
+              r.name AS robot_name,
+              t.order_count AS trip_total_stops,
+              t.status      AS trip_status,
+              t.current_stop AS trip_current_stop
+            FROM public.orders o
+            LEFT JOIN public.delivery_trips t ON t.id = o.delivery_trip_id
+            LEFT JOIN public.robots r ON r.id = t.robot_id
+            WHERE o.id = %(order_id)s AND o.user_id = %(user_id)s
             """,
             {"order_id": order_id, "user_id": str(user_id)},
         )
@@ -731,6 +619,12 @@ def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
         for i in item_rows
     ]
 
+    trip_id_value = order.get("delivery_trip_id")
+    trip_stop_sequence = order.get("trip_stop_sequence")
+    trip_total_stops = order.get("trip_total_stops")
+    trip_status = order.get("trip_status")
+    trip_current_stop = order.get("trip_current_stop")
+
     return OrderDetail(
         id=int(order["id"]),
         user_id=str(order["user_id"]),
@@ -750,6 +644,12 @@ def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
         delivered_at=order.get("delivered_at"),
         created_at=order["created_at"],
         items=items,
+        trip_id=int(trip_id_value) if trip_id_value is not None else None,
+        robot_name=order.get("robot_name"),
+        trip_stop_sequence=int(trip_stop_sequence) if trip_stop_sequence is not None else None,
+        trip_total_stops=int(trip_total_stops) if trip_total_stops is not None else None,
+        trip_status=trip_status,
+        trip_current_stop=int(trip_current_stop) if trip_current_stop is not None else None,
     )
 
 
@@ -779,12 +679,27 @@ def mark_delivered(order_id: int, user_id: UUID = Depends(get_current_user_id)):
 
 @router.get("/orders/{order_id}/eta")
 def get_order_eta(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+    """
+    Real-time ETA derived from the trip simulator clock. ETA = remaining
+    leg duration (down to and including the customer's stop), divided by the
+    sim speed multiplier so the value is in real-world wall-clock seconds.
+    """
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT delivery_address_latitude, delivery_address_longitude
-            FROM public.orders
-            WHERE id = %(order_id)s AND user_id = %(user_id)s
+            SELECT
+              o.status,
+              o.trip_stop_sequence,
+              t.id            AS trip_id,
+              t.robot_id,
+              t.status        AS trip_status,
+              t.current_stop  AS trip_current_stop,
+              t.order_count   AS trip_total_stops,
+              t.started_at    AS trip_started_at,
+              t.legs_geojson
+            FROM public.orders o
+            LEFT JOIN public.delivery_trips t ON t.id = o.delivery_trip_id
+            WHERE o.id = %(order_id)s AND o.user_id = %(user_id)s
             """,
             {"order_id": order_id, "user_id": str(user_id)},
         )
@@ -792,54 +707,91 @@ def get_order_eta(order_id: int, user_id: UUID = Depends(get_current_user_id)):
         if not row:
             raise HTTPException(status_code=404, detail="Order not found")
 
-    eta_seconds = mapbox_directions_eta_seconds(
-        start_lng=START_LNG,
-        start_lat=START_LAT,
-        end_lng=float(row["delivery_address_longitude"]),
-        end_lat=float(row["delivery_address_latitude"]),
-    )
+        if row.get("trip_id") and row.get("trip_status") == "in_progress":
+            _reconcile_trip_progress(
+                cur,
+                {
+                    "id": row["trip_id"],
+                    "robot_id": row["robot_id"],
+                    "status": row["trip_status"],
+                    "order_count": row["trip_total_stops"],
+                    "current_stop": row["trip_current_stop"],
+                    "started_at": row["trip_started_at"],
+                    "legs_geojson": row["legs_geojson"],
+                },
+            )
+            conn.commit()
 
-    return {"eta_seconds": eta_seconds, "start_address": START_ADDRESS_LABEL}
+    if row["status"] == "delivered":
+        return {"eta_seconds": 0, "stops_ahead": 0, "start_address": START_ADDRESS_LABEL}
+
+    legs = _parse_legs(row.get("legs_geojson"))
+    seq = row.get("trip_stop_sequence")
+    started_at = row.get("trip_started_at")
+
+    if not legs or seq is None or row.get("trip_status") not in ("in_progress",) or not started_at:
+        # Trip not yet started or no plan yet — fall back to the sum of legs
+        # up to and including the customer (or 0 if unknown).
+        if legs and seq is not None:
+            sim_remaining = sum(float(l["duration_s"]) for l in legs[: int(seq)])
+            eta_seconds = int(round(sim_remaining / max(SIMULATION_SPEED, 0.001)))
+        else:
+            eta_seconds = 0
+        stops_ahead = max(0, int(seq) - 1) if seq is not None else 0
+        return {
+            "eta_seconds": eta_seconds,
+            "stops_ahead": stops_ahead,
+            "trip_status": row.get("trip_status"),
+            "start_address": START_ADDRESS_LABEL,
+        }
+
+    # Trip in progress — compute remaining sim seconds against the live clock.
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    elapsed_real = max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds())
+    sim_elapsed = elapsed_real * SIMULATION_SPEED
+
+    target_sim = sum(float(l["duration_s"]) for l in legs[: int(seq)])
+    sim_remaining = max(0.0, target_sim - sim_elapsed)
+    eta_seconds = int(round(sim_remaining / max(SIMULATION_SPEED, 0.001)))
+
+    cur_stop = int(row.get("trip_current_stop") or 0)
+    stops_ahead = max(0, int(seq) - cur_stop - 1)
+
+    return {
+        "eta_seconds": eta_seconds,
+        "stops_ahead": stops_ahead,
+        "trip_status": row.get("trip_status"),
+        "start_address": START_ADDRESS_LABEL,
+    }
 
 
-def _fit_map_view(start_lng: float, start_lat: float, end_lng: float, end_lat: float, width: int = 900, height: int = 520, padding: int = 80):
-    lon_span = abs(end_lng - start_lng)
-    lat_span = abs(end_lat - start_lat)
-
-    center_lng = (start_lng + end_lng) / 2
-    center_lat = (start_lat + end_lat) / 2
-
-    if lon_span == 0 and lat_span == 0:
-        return center_lng, center_lat, 14
-
-    # More padding => smaller zoom so both markers stay visible.
-    safe_width = max(1, width - 2 * padding)
-    safe_height = max(1, height - 2 * padding)
-
-    zoom_x = math.log2((safe_width * 360) / (256 * lon_span)) if lon_span > 0 else 14
-    zoom_y = math.log2((safe_height * 170) / (256 * lat_span)) if lat_span > 0 else 14
-
-    zoom = min(zoom_x, zoom_y)
-    zoom = max(3, min(15, zoom))
-
-    return center_lng, center_lat, zoom
-
-
-@router.get("/orders/{order_id}/map")
-def get_order_map(
-    order_id: int,
-    progress: float = Query(0.0, ge=0.0, le=1.0),
-    user_id: UUID = Depends(get_current_user_id),
-):
-    if not MAPBOX_ACCESS_TOKEN:
-        raise HTTPException(status_code=500, detail="MAPBOX_ACCESS_TOKEN is not set")
-
+@router.get("/orders/{order_id}/trip", response_model=CustomerTripView)
+def get_order_trip_view(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+    """
+    Customer-facing live trip plan: the full multi-stop polyline + per-leg
+    durations + a server clock anchor. Other customers' addresses/names are
+    omitted; only their stop coordinates and sequence numbers are returned so
+    the customer can see the full route the robot is taking.
+    """
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT delivery_address_latitude, delivery_address_longitude
-            FROM public.orders
-            WHERE id = %(order_id)s AND user_id = %(user_id)s
+            SELECT
+              o.id              AS order_id,
+              o.trip_stop_sequence,
+              t.id              AS trip_id,
+              t.robot_id,
+              t.status          AS trip_status,
+              t.order_count,
+              t.current_stop,
+              t.started_at,
+              t.legs_geojson,
+              r.name            AS robot_name
+            FROM public.orders o
+            LEFT JOIN public.delivery_trips t ON t.id = o.delivery_trip_id
+            LEFT JOIN public.robots r        ON r.id = t.robot_id
+            WHERE o.id = %(order_id)s AND o.user_id = %(user_id)s
             """,
             {"order_id": order_id, "user_id": str(user_id)},
         )
@@ -847,66 +799,62 @@ def get_order_map(
         if not row:
             raise HTTPException(status_code=404, detail="Order not found")
 
-    end_lat = float(row["delivery_address_latitude"])
-    end_lng = float(row["delivery_address_longitude"])
+        if not row.get("trip_id"):
+            raise HTTPException(status_code=409, detail="Order is not on a trip yet")
 
-    route_coords = mapbox_directions_geometry(
-        start_lng=START_LNG,
-        start_lat=START_LAT,
-        end_lng=end_lng,
-        end_lat=end_lat,
-    )
+        # Reconcile any milestones the simulator clock has crossed.
+        if row.get("trip_status") == "in_progress":
+            _reconcile_trip_progress(
+                cur,
+                {
+                    "id": row["trip_id"],
+                    "robot_id": row["robot_id"],
+                    "status": row["trip_status"],
+                    "order_count": row["order_count"],
+                    "current_stop": row["current_stop"],
+                    "started_at": row["started_at"],
+                    "legs_geojson": row["legs_geojson"],
+                },
+            )
 
-    overlays: List[str] = []
-
-    if progress <= 0 or not route_coords:
-        # No movement yet — show full green route + A + B pins
-        full_line = _geojson_line_overlay(route_coords, "#16a34a")
-        if full_line:
-            overlays.append(full_line)
-        overlays.append(f"pin-s-a+0f172a({START_LNG},{START_LAT})")
-        overlays.append(f"pin-s-b+16a34a({end_lng},{end_lat})")
-    else:
-        # Driver is moving — split route into traveled (gray) + remaining (green)
-        traveled, remaining, driver_pos = _interpolate_route(route_coords, progress)
-
-        gray_line = _geojson_line_overlay(traveled, "#9ca3af", opacity=0.7, width=5)
-        if gray_line:
-            overlays.append(gray_line)
-
-        green_line = _geojson_line_overlay(remaining, "#16a34a", opacity=0.85, width=5)
-        if green_line:
-            overlays.append(green_line)
-
-        # Driver marker (orange truck pin) replaces the A pin
-        driver_lng, driver_lat = driver_pos[0], driver_pos[1]
-        overlays.append(f"pin-s+f97316({driver_lng},{driver_lat})")
-
-        # Destination B pin
-        overlays.append(f"pin-s-b+16a34a({end_lng},{end_lat})")
-
-    overlay_str = ",".join(overlays)
-
-    center_lng, center_lat, zoom = _fit_map_view(
-        START_LNG, START_LAT, end_lng, end_lat, width=900, height=520, padding=90
-    )
-
-    static_url = (
-        "https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/"
-        f"{overlay_str}/{center_lng},{center_lat},{zoom:.2f}/900x520@2x"
-    )
-
-    response = requests.get(
-        static_url,
-        params={"access_token": MAPBOX_ACCESS_TOKEN},
-        timeout=10,
-    )
-    try:
-        response.raise_for_status()
-    except requests.HTTPError:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Mapbox static map failed: {response.status_code} {response.text}",
+        cur.execute(
+            """
+            SELECT
+              o.id AS order_id,
+              o.trip_stop_sequence,
+              o.delivery_address_latitude  AS lat,
+              o.delivery_address_longitude AS lng
+            FROM public.orders o
+            WHERE o.delivery_trip_id = %(id)s
+            ORDER BY o.trip_stop_sequence ASC
+            """,
+            {"id": row["trip_id"]},
         )
+        stops = cur.fetchall()
+        conn.commit()
 
-    return Response(content=response.content, media_type="image/png")
+    legs = _parse_legs(row.get("legs_geojson"))
+    your_seq = int(row["trip_stop_sequence"])
+
+    return CustomerTripView(
+        trip_id=int(row["trip_id"]),
+        robot_name=row["robot_name"] or "",
+        status=row["trip_status"] or "planned",
+        started_at=row.get("started_at"),
+        server_now=datetime.now(timezone.utc),
+        speed_multiplier=SIMULATION_SPEED,
+        legs=[LegPlan(**leg) for leg in legs],
+        stops=[
+            CustomerStopMarker(
+                stop_sequence=int(s["trip_stop_sequence"]),
+                longitude=float(s["lng"]),
+                latitude=float(s["lat"]),
+                is_you=(int(s["order_id"]) == int(row["order_id"])),
+            )
+            for s in stops
+        ],
+        your_stop_sequence=your_seq,
+        order_count=int(row["order_count"]),
+        restaurant_lng=START_LNG,
+        restaurant_lat=START_LAT,
+    )

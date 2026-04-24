@@ -39,6 +39,12 @@ class OrderDetail(BaseModel):
     delivered_at: Optional[datetime] = None
     created_at: datetime
     items: List[OrderItem]
+    trip_id: Optional[int] = None
+    robot_name: Optional[str] = None
+    trip_stop_sequence: Optional[int] = None
+    trip_total_stops: Optional[int] = None
+    trip_status: Optional[str] = None
+    trip_current_stop: Optional[int] = None
 
 
 class OrderDeliveredResponse(BaseModel):

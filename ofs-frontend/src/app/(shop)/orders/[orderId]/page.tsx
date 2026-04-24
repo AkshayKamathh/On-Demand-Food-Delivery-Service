@@ -1,24 +1,21 @@
 // src/app/(shop)/orders/[orderId]/page.tsx
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthHeaders } from "@/lib/authHeaders";
 
-const MapComponent = dynamic(
-  () => import("@/components/MapComponent").then((mod) => mod.default),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-full w-full flex items-center justify-center text-sm text-zinc-600 dark:text-zinc-300">
-        Loading map…
-      </div>
-    ),
-  }
-);
+const MapComponent = dynamic(() => import("@/components/MapComponent"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full flex items-center justify-center text-sm text-zinc-600 dark:text-zinc-300">
+      Loading map…
+    </div>
+  ),
+});
 
 type OrderItem = {
   item_id: number;
@@ -28,6 +25,8 @@ type OrderItem = {
   unit_weight: number;
   line_total: number;
 };
+
+type TripStatus = "planned" | "in_progress" | "completed" | "cancelled";
 
 type OrderDetail = {
   id: number;
@@ -45,6 +44,12 @@ type OrderDetail = {
   created_at: string;
   delivered_at?: string | null;
   items: OrderItem[];
+  trip_id?: number | null;
+  robot_name?: string | null;
+  trip_stop_sequence?: number | null;
+  trip_total_stops?: number | null;
+  trip_status?: TripStatus | null;
+  trip_current_stop?: number | null;
 };
 
 type StepKey = "received" | "preparing" | "out" | "delivered";
@@ -73,28 +78,31 @@ export default function OrderStatusPage() {
   const [etaSeconds, setEtaSeconds] = useState<number>(0);
   const [deliveredBanner, setDeliveredBanner] = useState(false);
 
-  const [activeSteps, setActiveSteps] = useState<Record<StepKey, boolean>>({
-    received: false,
-    preparing: false,
-    out: false,
-    delivered: false,
+  // Live simulator-driven view of where the robot actually is. Updated by
+  // MapComponent's RAF loop the moment a milestone is crossed.
+  const [liveTrip, setLiveTrip] = useState<{
+    status: "planned" | "in_progress" | "completed" | "cancelled" | null;
+    onYourLeg: boolean;
+    youDelivered: boolean;
+    completedStops: number;
+  }>({
+    status: null,
+    onYourLeg: false,
+    youDelivered: false,
+    completedStops: 0,
   });
 
-  const [driverProgress, setDriverProgress] = useState(0);
-  const driverProgressRef = useRef(0);
-  // Holds the update function handed to us by MapComponent once its map is loaded
-  const updateMapPositionRef = useRef<((progress: number) => void) | null>(null);
-
-  const simulationStarted = useRef(false);
-  const deliveryMarked = useRef(false);
-
-  // Called by MapComponent when the map + route are fully loaded.
-  // Immediately apply whatever progress the simulation is already at —
-  // this handles the "already delivered" edge case cleanly.
-  const handleMapReady = useCallback((updateFn: (progress: number) => void) => {
-    updateMapPositionRef.current = updateFn;
-    updateFn(driverProgressRef.current);
-  }, []);
+  const handleTripStateChange = useCallback(
+    (snapshot: {
+      status: "planned" | "in_progress" | "completed" | "cancelled";
+      completedStops: number;
+      onYourLeg: boolean;
+      youDelivered: boolean;
+    }) => {
+      setLiveTrip(snapshot);
+    },
+    [],
+  );
 
   // Auth + order + ETA load
   useEffect(() => {
@@ -152,91 +160,56 @@ export default function OrderStatusPage() {
     return () => { cancelled = true; };
   }, [orderId, router]);
 
-  // Delivery simulation — drives both the step tracker and the map marker
+  // Poll backend for real order + trip state every 4 seconds. ETA is re-pulled
+  // too because stops_ahead shrinks as the manager advances the trip.
   useEffect(() => {
-    if (!order || simulationStarted.current) return;
+    if (!orderId) return;
 
-    // Already delivered in DB — snap everything to the end state
-    if ((order.status ?? "").toLowerCase() === "delivered") {
-      setActiveSteps({ received: true, preparing: true, out: true, delivered: true });
-      driverProgressRef.current = 1;
-      setDriverProgress(1);
-      setDeliveredBanner(true);
-      simulationStarted.current = true;
-      // Map might not be ready yet; handleMapReady will call updateFn(1) when it fires
-      updateMapPositionRef.current?.(1);
-      return;
-    }
-
-    simulationStarted.current = true;
-    const timers: number[] = [];
-
-    timers.push(window.setTimeout(() => setActiveSteps((s) => ({ ...s, received: true })), 3000));
-    timers.push(window.setTimeout(() => setActiveSteps((s) => ({ ...s, preparing: true })), 6000));
-
-    const progressIntervalRef = { current: 0 };
-
-    timers.push(
-      window.setTimeout(() => {
-        setActiveSteps((s) => ({ ...s, out: true }));
-
-        const start = Date.now();
-        const durationMs = 12000;
-
-        progressIntervalRef.current = window.setInterval(() => {
-          const pct = Math.min(1, (Date.now() - start) / durationMs);
-          const p = Number(pct.toFixed(3));
-
-          driverProgressRef.current = p;
-          setDriverProgress(p);
-          // Direct call into the map — no React state, no re-renders, no network
-          updateMapPositionRef.current?.(p);
-
-          if (pct >= 1) {
-            window.clearInterval(progressIntervalRef.current);
-            setActiveSteps((s) => ({ ...s, delivered: true }));
-            setDeliveredBanner(true);
-          }
-        }, 100); // 100ms = smooth animation, pure in-memory marker move
-      }, 11000)
-    );
-
-    return () => {
-      timers.forEach(window.clearTimeout);
-      window.clearInterval(progressIntervalRef.current);
-    };
-  }, [order]);
-
-  // Mark order delivered in DB once the simulation finishes
-  useEffect(() => {
-    if (!order || !activeSteps.delivered || deliveryMarked.current) return;
-    deliveryMarked.current = true;
-
-    const mark = async () => {
+    const poll = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/checkout/orders/${orderId}/delivered`, {
-          method: "POST",
-          headers: await getAuthHeaders(),
-        });
-        if (res.ok) {
-          const payload = (await res.json()) as any;
-          setOrder((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  status: payload?.status ?? "delivered",
-                  delivered_at: payload?.delivered_at ?? prev.delivered_at ?? null,
-                }
-              : prev
-          );
+        const headers = await getAuthHeaders();
+        const [orderRes, etaRes] = await Promise.all([
+          fetch(`http://localhost:8000/checkout/orders/${orderId}`, { headers }),
+          fetch(`http://localhost:8000/checkout/orders/${orderId}/eta`, { headers }),
+        ]);
+        if (orderRes.ok) {
+          const updated = (await orderRes.json()) as OrderDetail;
+          setOrder(updated);
+        }
+        if (etaRes.ok) {
+          const payload = (await etaRes.json()) as any;
+          setEtaSeconds(Number(payload?.eta_seconds ?? 0));
         }
       } catch {
-        // Non-critical — UI is already complete
+        // ignore transient polling errors
       }
     };
 
-    mark();
-  }, [activeSteps.delivered, order, orderId]);
+    const intervalId = window.setInterval(poll, 4000);
+    return () => window.clearInterval(intervalId);
+  }, [orderId]);
+
+  // Derive step states from server order status + live simulator. Server
+  // status backs the early steps (received/preparing); the live simulator
+  // controls "out for delivery" / "delivered" so the UI reacts the instant the
+  // robot crosses a stop, not on the next 4-second poll.
+  const serverStatus = order?.status ?? "";
+  const tripStatus = order?.trip_status ?? null;
+  const youDelivered =
+    liveTrip.youDelivered ||
+    serverStatus === "delivered" ||
+    tripStatus === "completed";
+  const onYourLeg = liveTrip.onYourLeg;
+  const activeSteps: Record<StepKey, boolean> = {
+    received: ["preparing", "out_for_delivery", "delivered", "submitted"].includes(serverStatus),
+    preparing: ["preparing", "out_for_delivery", "delivered"].includes(serverStatus),
+    out: youDelivered || onYourLeg,
+    delivered: youDelivered,
+  };
+
+  useEffect(() => {
+    if (youDelivered) setDeliveredBanner(true);
+  }, [youDelivered]);
 
   const receiptPlacedAt = order?.created_at ? new Date(order.created_at) : null;
   const placedLabel = receiptPlacedAt ? receiptPlacedAt.toLocaleString() : "—";
@@ -286,6 +259,32 @@ export default function OrderStatusPage() {
               Back to orders
             </Link>
           </div>
+
+          {order.trip_id && order.robot_name && (
+            <div className="inline-flex items-center gap-2 self-start rounded-full border border-emerald-300/80 dark:border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-900/20 px-3 py-1.5 text-sm text-emerald-800 dark:text-emerald-200">
+              <span>🤖</span>
+              <span className="font-medium">Robot {order.robot_name}</span>
+              {order.trip_stop_sequence && order.trip_total_stops && (
+                <span className="opacity-80">
+                  · Stop {order.trip_stop_sequence} of {order.trip_total_stops}
+                </span>
+              )}
+              {(liveTrip.status === "in_progress" || tripStatus === "in_progress") &&
+                order.trip_stop_sequence != null && (
+                  <span className="opacity-80">
+                    ·{" "}
+                    {liveTrip.youDelivered
+                      ? "delivered"
+                      : liveTrip.onYourLeg
+                        ? "heading to you"
+                        : `at stop ${liveTrip.completedStops} of ${order.trip_total_stops}`}
+                  </span>
+                )}
+              {tripStatus === "planned" && liveTrip.status !== "in_progress" && (
+                <span className="opacity-80">· awaiting departure</span>
+              )}
+            </div>
+          )}
 
           {deliveredBanner && (
             <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-500/10 p-4 text-emerald-800 dark:text-emerald-200">
@@ -343,9 +342,10 @@ export default function OrderStatusPage() {
               <div className="relative rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 overflow-hidden shadow-xl">
                 <div className="relative w-full aspect-[16/9]">
                   <MapComponent
-                    endLng={order.delivery_address_longitude}
-                    endLat={order.delivery_address_latitude}
-                    onReady={handleMapReady}
+                    orderId={order.id}
+                    fallbackEndLng={order.delivery_address_longitude}
+                    fallbackEndLat={order.delivery_address_latitude}
+                    onTripStateChange={handleTripStateChange}
                   />
                 </div>
 
@@ -382,16 +382,21 @@ export default function OrderStatusPage() {
                       </p>
                     </div>
                     <div className="rounded-xl bg-zinc-100/80 dark:bg-zinc-900/70 px-3 py-2">
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-500">Progress</p>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-500">Stops</p>
                       <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                        {Math.round(driverProgress * 100)}%
+                        {order.trip_stop_sequence ?? "—"}
+                        {order.trip_total_stops ? ` / ${order.trip_total_stops}` : ""}
                       </p>
                     </div>
                   </div>
 
                   {!activeSteps.out && (
                     <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                      Route is shown now. The driver starts moving once the order is out for delivery.
+                      {tripStatus === "in_progress"
+                        ? `Robot ${order.robot_name ?? ""} is making earlier stops first. You'll see the driver light up the moment it heads your way.`
+                        : tripStatus === "planned"
+                          ? "Loaded onto the robot. The map updates the moment the trip departs."
+                          : "Route is shown now. The driver starts moving once the order is out for delivery."}
                     </p>
                   )}
                 </div>

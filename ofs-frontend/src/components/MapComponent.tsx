@@ -1,220 +1,374 @@
-// src/components/MapComponent.tsx
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import type mapboxgl from "mapbox-gl";  
+import { useEffect, useRef, useState } from "react";
+import type mapboxgl from "mapbox-gl";
 
-const START_LNG = -121.895;
-const START_LAT = 37.3497;
+import { getAuthHeaders } from "@/lib/authHeaders";
+import {
+  flattenRoute,
+  Leg,
+  planFromResponse,
+  snapshotAt,
+  splitRoute,
+  TripPlan,
+} from "@/lib/tripSimulator";
 
-interface MapComponentProps {
-  endLng: number;
-  endLat: number;
-  onReady: (updateFn: (progress: number) => void) => void;
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+type CustomerTripView = {
+  trip_id: number;
+  robot_name: string;
+  status: TripPlan["status"];
+  started_at: string | null;
+  server_now: string;
+  speed_multiplier: number;
+  legs: Leg[];
+  stops: {
+    stop_sequence: number;
+    longitude: number;
+    latitude: number;
+    is_you: boolean;
+  }[];
+  your_stop_sequence: number;
+  order_count: number;
+  restaurant_lng: number;
+  restaurant_lat: number;
+};
+
+interface Props {
+  orderId: number;
+  /** Fallback drop-pin coords when the order isn't on a trip yet. */
+  fallbackEndLng: number;
+  fallbackEndLat: number;
+  /** Updated whenever the live simulator crosses a milestone (used by the page). */
+  onTripStateChange?: (snapshot: {
+    status: TripPlan["status"];
+    completedStops: number;
+    onYourLeg: boolean;
+    youDelivered: boolean;
+  }) => void;
 }
 
-export default function MapComponent({ endLng, endLat, onReady }: MapComponentProps) {
-  const mapContainer = useRef<HTMLDivElement>(null);
+const POLL_INTERVAL_MS = 4000;
+
+export default function MapComponent({
+  orderId,
+  fallbackEndLng,
+  fallbackEndLat,
+  onTripStateChange,
+}: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const driverMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  // Store coords and cumulative distances as refs so interpolateRoute never goes stale
-  const routeCoordsRef = useRef<[number, number][]>([]);
-  const cumDistRef = useRef<number[]>([]);
-  const totalDistRef = useRef<number>(0);
+  const restaurantMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const fallbackMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const stopMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const planRef = useRef<TripPlan | null>(null);
+  const tripRef = useRef<CustomerTripView | null>(null);
+  const lastStateRef = useRef<{ status: string; completedStops: number; youDelivered: boolean }>({
+    status: "",
+    completedStops: -1,
+    youDelivered: false,
+  });
+  const rafRef = useRef<number | null>(null);
+  const mapboxModRef = useRef<typeof import("mapbox-gl") | null>(null);
 
-  // Pure interpolation — no deps on anything that changes, reads only from refs
-  const interpolateRoute = useCallback((progress: number) => {
-    const map = mapRef.current;
-    const coords = routeCoordsRef.current;
-    const cumDist = cumDistRef.current;
-    const totalDist = totalDistRef.current;
+  const [tripView, setTripView] = useState<CustomerTripView | null>(null);
+  const [error, setError] = useState("");
 
-    if (!map || coords.length < 2) return;
-
-    const p = Math.max(0, Math.min(1, progress));
-    const targetDist = p * totalDist;
-
-    let driverPos: [number, number];
-    let splitIdx: number;
-
-    if (p <= 0) {
-      driverPos = coords[0];
-      splitIdx = 0;
-    } else if (p >= 1) {
-      driverPos = coords[coords.length - 1];
-      splitIdx = coords.length - 1;
-    } else {
-      // Find the segment containing targetDist
-      splitIdx = 0;
-      for (let i = 0; i < cumDist.length - 1; i++) {
-        if (targetDist <= cumDist[i + 1]) {
-          splitIdx = i;
-          const segLen = cumDist[i + 1] - cumDist[i];
-          const t = segLen > 0 ? (targetDist - cumDist[i]) / segLen : 0;
-          driverPos = [
-            coords[i][0] + t * (coords[i + 1][0] - coords[i][0]),
-            coords[i][1] + t * (coords[i + 1][1] - coords[i][1]),
-          ];
-          break;
-        }
-        // Fallback if we somehow overshoot
-        driverPos = coords[coords.length - 1];
-        splitIdx = coords.length - 1;
-      }
-      driverPos = driverPos!;
-    }
-
-    // Move the driver dot
-    driverMarkerRef.current?.setLngLat(driverPos);
-
-    // Build the two line segments
-    const traveledCoords: [number, number][] =
-      p <= 0 ? [] : [...coords.slice(0, splitIdx + 1), driverPos];
-
-    const remainingCoords: [number, number][] =
-      p >= 1 ? [] : [driverPos, ...coords.slice(splitIdx + 1)];
-
-    const traveledSrc = map.getSource("route-traveled") as mapboxgl.GeoJSONSource | undefined;
-    const remainingSrc = map.getSource("route-remaining") as mapboxgl.GeoJSONSource | undefined;
-
-    traveledSrc?.setData({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: traveledCoords },
-    });
-
-    remainingSrc?.setData({
-      type: "Feature",
-      properties: {},
-      geometry: {
-        type: "LineString",
-        coordinates: remainingCoords.length >= 2 ? remainingCoords : coords,
-      },
-    });
-  }, []); // stable — reads only from refs
-
+  // Init map once.
   useEffect(() => {
-    if (!mapContainer.current) return;
-
-    let map: mapboxgl.Map;
+    if (!containerRef.current) return;
     let destroyed = false;
 
-    const initMap = async () => {
+    (async () => {
       const mapboxgl = (await import("mapbox-gl")).default;
-
+      mapboxModRef.current = await import("mapbox-gl");
       if (destroyed) return;
 
       mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
 
-      map = new mapboxgl.Map({
-        container: mapContainer.current!,
+      const map = new mapboxgl.Map({
+        container: containerRef.current!,
         style: "mapbox://styles/mapbox/streets-v12",
-        bounds: new mapboxgl.LngLatBounds(
-          [Math.min(START_LNG, endLng) - 0.02, Math.min(START_LAT, endLat) - 0.02],
-          [Math.max(START_LNG, endLng) + 0.02, Math.max(START_LAT, endLat) + 0.02]
-        ),
-        fitBoundsOptions: { padding: 60 },
+        center: [fallbackEndLng, fallbackEndLat],
+        zoom: 12,
       });
-
       mapRef.current = map;
 
-      map.on("load", async () => {
+      map.on("load", () => {
         if (destroyed) return;
 
-        // Start pin
-        new mapboxgl.Marker({ color: "#0f172a" })
-          .setLngLat([START_LNG, START_LAT])
-          .setPopup(new mapboxgl.Popup().setText("OFS Grocery"))
-          .addTo(map);
-
-        // End pin
-        new mapboxgl.Marker({ color: "#16a34a" })
-          .setLngLat([endLng, endLat])
-          .setPopup(new mapboxgl.Popup().setText("Delivery Location"))
-          .addTo(map);
-
-        // Fetch route with full geometry so interpolation is accurate
-        const res = await fetch(
-          `https://api.mapbox.com/directions/v5/mapbox/driving/` +
-            `${START_LNG},${START_LAT};${endLng},${endLat}` +
-            `?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`
-        );
-        const data = await res.json();
-
-        if (destroyed || !data.routes?.length) return;
-
-        const coords: [number, number][] = data.routes[0].geometry.coordinates;
-        routeCoordsRef.current = coords;
-
-        // Precompute cumulative distances (simple Euclidean in degrees — fine for interpolation)
-        const cumDist: number[] = [0];
-        for (let i = 1; i < coords.length; i++) {
-          const dx = coords[i][0] - coords[i - 1][0];
-          const dy = coords[i][1] - coords[i - 1][1];
-          cumDist.push(cumDist[i - 1] + Math.sqrt(dx * dx + dy * dy));
-        }
-        cumDistRef.current = cumDist;
-        totalDistRef.current = cumDist[cumDist.length - 1];
-
-        // Traveled segment (gray) — starts empty
         map.addSource("route-traveled", {
           type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: [] },
-          },
+          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
         });
-
-        // Remaining segment (green) — starts as the full route
         map.addSource("route-remaining", {
           type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: coords },
-          },
+          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
         });
-
         map.addLayer({
           id: "route-traveled-layer",
           type: "line",
           source: "route-traveled",
           layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": "#9ca3af", "line-width": 5, "line-opacity": 0.7 },
+          paint: { "line-color": "#9ca3af", "line-width": 4, "line-opacity": 0.8 },
         });
-
         map.addLayer({
           id: "route-remaining-layer",
           type: "line",
           source: "route-remaining",
           layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": "#16a34a", "line-width": 5, "line-opacity": 0.85 },
+          paint: { "line-color": "#16a34a", "line-width": 5, "line-opacity": 0.9 },
         });
 
-        // Driver marker (orange dot)
+        // Driver dot.
         const el = document.createElement("div");
         el.style.cssText =
-          "width:16px;height:16px;background:#f97316;border-radius:50%;" +
+          "width:18px;height:18px;background:#f97316;border-radius:50%;" +
           "border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
-
         driverMarkerRef.current = new mapboxgl.Marker({ element: el })
-          .setLngLat([START_LNG, START_LAT])
+          .setLngLat([fallbackEndLng, fallbackEndLat])
           .addTo(map);
 
-        // Tell the parent we're ready and hand it the update function
-        onReady(interpolateRoute);
+        // Initial fallback "delivery here" pin used until we have a real trip.
+        fallbackMarkerRef.current = new mapboxgl.Marker({ color: "#16a34a" })
+          .setLngLat([fallbackEndLng, fallbackEndLat])
+          .setPopup(new mapboxgl.Popup().setText("Delivery location"))
+          .addTo(map);
       });
-    };
-
-    initMap().catch(console.error);
+    })().catch((e) => setError(String(e)));
 
     return () => {
       destroyed = true;
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      stopMarkersRef.current.forEach((m) => m.remove());
+      stopMarkersRef.current = [];
+      driverMarkerRef.current?.remove();
+      driverMarkerRef.current = null;
+      restaurantMarkerRef.current?.remove();
+      restaurantMarkerRef.current = null;
+      fallbackMarkerRef.current?.remove();
+      fallbackMarkerRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, [endLng, endLat, onReady, interpolateRoute]);
+    // We intentionally only init once; fallback coords are seed values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return <div ref={mapContainer} className="h-full w-full" />;
+  // Fetch trip view and re-poll. 409 = not on a trip yet (just keep showing fallback pin).
+  useEffect(() => {
+    let cancelled = false;
+    let intervalId: number | null = null;
+
+    const fetchOnce = async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`${BASE_URL}/checkout/orders/${orderId}/trip`, { headers });
+        if (res.status === 409) {
+          if (!cancelled) {
+            tripRef.current = null;
+            planRef.current = null;
+            setTripView(null);
+          }
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as CustomerTripView;
+        if (cancelled) return;
+        tripRef.current = data;
+        planRef.current = planFromResponse({
+          startedAt: data.started_at,
+          serverNow: data.server_now,
+          speed: data.speed_multiplier,
+          legs: data.legs,
+          status: data.status,
+        });
+        setTripView(data);
+        if (data.status === "completed" || data.status === "cancelled") {
+          if (intervalId !== null) {
+            window.clearInterval(intervalId);
+            intervalId = null;
+          }
+        }
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message ?? "Failed to load trip");
+      }
+    };
+
+    fetchOnce();
+    intervalId = window.setInterval(fetchOnce, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (intervalId !== null) window.clearInterval(intervalId);
+    };
+  }, [orderId]);
+
+  // Whenever a fresh trip view arrives, redraw stops + base route + fit bounds.
+  useEffect(() => {
+    const map = mapRef.current;
+    const mapboxMod = mapboxModRef.current;
+    const data = tripView;
+    if (!map || !mapboxMod) return;
+
+    const apply = () => {
+      // Tear down old stop markers.
+      stopMarkersRef.current.forEach((m) => m.remove());
+      stopMarkersRef.current = [];
+
+      if (!data) {
+        // No active trip — keep showing the fallback delivery pin only.
+        const traveledSrc = map.getSource("route-traveled") as mapboxgl.GeoJSONSource | undefined;
+        const remainingSrc = map.getSource("route-remaining") as mapboxgl.GeoJSONSource | undefined;
+        traveledSrc?.setData({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "LineString", coordinates: [] },
+        });
+        remainingSrc?.setData({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "LineString", coordinates: [] },
+        });
+        fallbackMarkerRef.current?.addTo(map);
+        return;
+      }
+
+      // Hide the seed fallback pin once we have real stops.
+      fallbackMarkerRef.current?.remove();
+
+      // Restaurant pin (recreate to keep it on top after style reloads).
+      restaurantMarkerRef.current?.remove();
+      restaurantMarkerRef.current = new mapboxMod.default.Marker({ color: "#0f172a" })
+        .setLngLat([data.restaurant_lng, data.restaurant_lat])
+        .setPopup(new mapboxMod.default.Popup().setText("OFS Grocery"))
+        .addTo(map);
+
+      // Per-stop pins. Other customers are anonymized (pin only); your stop
+      // gets a label and a distinct color.
+      data.stops.forEach((s) => {
+        const isYou = s.is_you;
+        const el = document.createElement("div");
+        el.textContent = isYou ? "You" : String(s.stop_sequence);
+        el.style.cssText = [
+          "display:flex",
+          "align-items:center",
+          "justify-content:center",
+          isYou ? "min-width:36px" : "width:24px",
+          "height:24px",
+          "padding:0 6px",
+          "border-radius:12px",
+          `background:${isYou ? "#16a34a" : "#1e40af"}`,
+          "color:white",
+          "font-size:11px",
+          "font-weight:600",
+          "border:2px solid white",
+          "box-shadow:0 2px 4px rgba(0,0,0,0.4)",
+        ].join(";");
+        const marker = new mapboxMod.default.Marker({ element: el })
+          .setLngLat([s.longitude, s.latitude])
+          .addTo(map);
+        stopMarkersRef.current.push(marker);
+      });
+
+      // Fit bounds to the whole route (restaurant + every stop).
+      const bounds = new mapboxMod.default.LngLatBounds(
+        [data.restaurant_lng, data.restaurant_lat],
+        [data.restaurant_lng, data.restaurant_lat],
+      );
+      data.stops.forEach((s) => bounds.extend([s.longitude, s.latitude]));
+      map.fitBounds(bounds, { padding: 60, duration: 600, maxZoom: 14 });
+
+      // Seed the route — base layer is full route in green; the RAF tick will
+      // immediately repaint with the traveled/remaining split.
+      const fullCoords = flattenRoute(data.legs);
+      const remainingSrc = map.getSource("route-remaining") as mapboxgl.GeoJSONSource | undefined;
+      remainingSrc?.setData({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: fullCoords },
+      });
+      const traveledSrc = map.getSource("route-traveled") as mapboxgl.GeoJSONSource | undefined;
+      traveledSrc?.setData({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: [] },
+      });
+    };
+
+    if (map.isStyleLoaded()) {
+      apply();
+    } else {
+      map.once("load", apply);
+    }
+  }, [tripView]);
+
+  // Animate driver dot via the shared simulator at 60fps.
+  useEffect(() => {
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      const map = mapRef.current;
+      const plan = planRef.current;
+      const trip = tripRef.current;
+      if (map && plan && trip && plan.legs.length > 0) {
+        const snap = snapshotAt(plan, performance.now());
+        driverMarkerRef.current?.setLngLat(snap.pos);
+
+        const { traveled, remaining } = splitRoute(plan.legs, snap);
+        const traveledSrc = map.getSource("route-traveled") as mapboxgl.GeoJSONSource | undefined;
+        const remainingSrc = map.getSource("route-remaining") as mapboxgl.GeoJSONSource | undefined;
+        traveledSrc?.setData({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "LineString", coordinates: traveled },
+        });
+        remainingSrc?.setData({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "LineString", coordinates: remaining },
+        });
+
+        // Notify parent only when something meaningful changes.
+        const youDelivered = snap.completedStops >= trip.your_stop_sequence;
+        const last = lastStateRef.current;
+        if (
+          last.status !== plan.status ||
+          last.completedStops !== snap.completedStops ||
+          last.youDelivered !== youDelivered
+        ) {
+          lastStateRef.current = {
+            status: plan.status,
+            completedStops: snap.completedStops,
+            youDelivered,
+          };
+          onTripStateChange?.({
+            status: plan.status,
+            completedStops: snap.completedStops,
+            onYourLeg: snap.legIndex === trip.your_stop_sequence - 1 && !snap.done,
+            youDelivered,
+          });
+        }
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      stopped = true;
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [onTripStateChange]);
+
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" />
+      {error && (
+        <div className="absolute top-2 left-2 right-2 rounded-md bg-red-600/80 text-white text-xs px-2 py-1">
+          {error}
+        </div>
+      )}
+    </div>
+  );
 }
