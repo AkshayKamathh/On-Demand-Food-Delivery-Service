@@ -144,12 +144,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const updateQuantity = async (id: number, quantity: number) => {
     if (quantity <= 0) {
       const headers = await getAuthHeaders();
-      await fetchWithTimeout(
-        "http://localhost:8000/cart/items",
+      const res = await fetchWithTimeout(
+        `http://localhost:8000/cart/items/${id}`,
         { method: "DELETE", headers },
         10000
       );
-      setCartItems([]);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Failed to remove cart item: ${text}`);
+      }
+      setCartItems((prev) => prev.filter((x) => x.id !== id));
       return;
     }
 

@@ -131,6 +131,23 @@ def update_cart_item(
     )
 
 
+@router.delete("/items/{cart_item_id}", status_code=204)
+def delete_cart_item(cart_item_id: int, user_id: UUID = Depends(get_current_user_id)):
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            DELETE FROM public.cart_items
+            WHERE id = %(id)s AND user_id = %(uid)s
+            """,
+            {"id": cart_item_id, "uid": str(user_id)},
+        )
+        deleted = cur.rowcount
+        conn.commit()
+
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+
+
 @router.delete("/items", status_code=204)
 def clear_cart(user_id: UUID = Depends(get_current_user_id)):
     with get_db() as (conn, cur):
