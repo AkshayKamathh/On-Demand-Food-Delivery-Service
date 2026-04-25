@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers.inventory import router as inventory_router
-from routers import catalog, cart, checkout, inventory, manager
+from routers import catalog, cart, checkout, dispatch, inventory, manager
 
 app = FastAPI()
 
@@ -19,6 +19,7 @@ app.include_router(catalog.router)
 app.include_router(cart.router)
 app.include_router(checkout.router)
 app.include_router(manager.router)
+app.include_router(dispatch.router)
 
 #Include the inventory router
 app.include_router(inventory_router)

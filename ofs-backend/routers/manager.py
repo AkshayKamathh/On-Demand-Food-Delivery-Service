@@ -47,12 +47,22 @@ def update_order_status(order_id: int, payload: OrderStatusUpdate):
             detail=f"Invalid status '{payload.status}'. Must be one of: {', '.join(sorted(VALID_ORDER_STATUSES))}",
         )
 
+    # Statuses that mean "this order is no longer participating in a delivery
+    # trip." Clearing the trip pointers here prevents the dispatcher from
+    # silently skipping the order on its next run because of a stale FK.
+    DETACH_FROM_TRIP = {"preparing", "submitted", "cancelled", "pending_payment"}
+
+    set_extras = ""
+    if payload.status == "delivered":
+        set_extras = ", delivered_at = now()"
+    elif payload.status in DETACH_FROM_TRIP:
+        set_extras = ", delivery_trip_id = NULL, trip_stop_sequence = NULL"
+
     with get_db() as (conn, cur):
-        delivered_at_sql = ", delivered_at = now()" if payload.status == "delivered" else ""
         cur.execute(
             f"""
             UPDATE public.orders
-            SET status = %(status)s, updated_at = now(){delivered_at_sql}
+            SET status = %(status)s, updated_at = now(){set_extras}
             WHERE id = %(order_id)s
             RETURNING id, status
             """,
