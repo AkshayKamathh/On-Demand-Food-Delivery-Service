@@ -315,6 +315,7 @@ export default function DashboardPage() {
         <ProductDetailOverlay
           open={!!selectedProduct}
           onClose={() => setSelectedProduct(null)}
+          productId={selectedProduct.id}
         />
       )}
     </>
