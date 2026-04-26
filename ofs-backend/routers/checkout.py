@@ -31,7 +31,13 @@ from schemas.checkout import (
     ValidatedAddress,
 )
 from schemas.dispatch import CustomerStopMarker, CustomerTripView, LegPlan
-from schemas.orders import OrderDeliveredResponse, OrderDetail, OrderItem, OrderListItem
+from schemas.orders import (
+    OrderCancelResponse,
+    OrderDeliveredResponse,
+    OrderDetail,
+    OrderItem,
+    OrderListItem,
+)
 
 router = APIRouter(prefix="/checkout", tags=["checkout"])
 
@@ -651,6 +657,42 @@ def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
         trip_status=trip_status,
         trip_current_stop=int(trip_current_stop) if trip_current_stop is not None else None,
     )
+
+
+@router.post("/orders/{order_id}/cancel", response_model=OrderCancelResponse)
+def cancel_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, status
+            FROM public.orders
+            WHERE id = %(order_id)s AND user_id = %(user_id)s
+            """,
+            {"order_id": order_id, "user_id": str(user_id)},
+        )
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        if order["status"] != "submitted":
+            raise HTTPException(
+                status_code=409,
+                detail="Order can only be cancelled before preparation starts",
+            )
+
+        cur.execute(
+            """
+            UPDATE public.orders
+            SET status = 'cancelled', updated_at = now()
+            WHERE id = %(order_id)s
+            RETURNING id, status
+            """,
+            {"order_id": order_id},
+        )
+        row = cur.fetchone()
+        conn.commit()
+
+    return OrderCancelResponse(order_id=int(row["id"]), status=row["status"])
 
 
 @router.post("/orders/{order_id}/delivered", response_model=OrderDeliveredResponse)
