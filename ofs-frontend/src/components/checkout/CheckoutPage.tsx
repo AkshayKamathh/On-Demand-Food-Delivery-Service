@@ -61,6 +61,22 @@ export default function CheckoutPage() {
   const searchParams = useSearchParams();
   const confirmationStarted = useRef(false);
 
+  const readErrorMessage = async (res: Response, fallback: string) => {
+    const text = await res.text();
+    if (!text) return fallback;
+
+    try {
+      const payload = JSON.parse(text);
+      if (typeof payload?.detail === "string" && payload.detail.trim()) {
+        return payload.detail;
+      }
+    } catch {
+      // Fall back to the raw text when the response body is not JSON.
+    }
+
+    return text;
+  };
+
   const refreshSummary = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/checkout/summary`, {
@@ -68,13 +84,13 @@ export default function CheckoutPage() {
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        if (res.status === 400 && text.includes("Cart is empty")) {
+        const message = await readErrorMessage(res, "Unable to load checkout summary");
+        if (res.status === 400 && message.includes("Cart is empty")) {
           setSummary(null);
           setSummaryError("");
           return;
         }
-        throw new Error(text || "Unable to load checkout summary");
+        throw new Error(message);
       }
 
       const payload = (await res.json()) as CheckoutSummary;
@@ -141,8 +157,8 @@ export default function CheckoutPage() {
         });
 
         if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || "Unable to confirm order");
+          const message = await readErrorMessage(res, "Unable to confirm order");
+          throw new Error(message);
         }
 
         const payload = await res.json();
@@ -179,8 +195,8 @@ export default function CheckoutPage() {
         });
 
         if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || "Unable to search addresses");
+          const message = await readErrorMessage(res, "Unable to search addresses");
+          throw new Error(message);
         }
 
         const payload = await res.json();
@@ -209,8 +225,8 @@ export default function CheckoutPage() {
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Unable to validate address");
+        const message = await readErrorMessage(res, "Unable to validate address");
+        throw new Error(message);
       }
 
       const payload = (await res.json()) as ValidatedAddress;
@@ -252,8 +268,8 @@ export default function CheckoutPage() {
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Unable to create Stripe checkout session");
+        const message = await readErrorMessage(res, "Unable to create Stripe checkout session");
+        throw new Error(message);
       }
 
       const payload = await res.json();

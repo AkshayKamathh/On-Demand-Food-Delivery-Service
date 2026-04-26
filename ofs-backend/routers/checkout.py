@@ -189,6 +189,64 @@ def require_stripe() -> None:
         raise HTTPException(status_code=500, detail="STRIPE_SECRET_KEY is not set")
 
 
+def create_stripe_checkout_session(**kwargs):
+    try:
+        return stripe.checkout.Session.create(**kwargs)
+    except stripe.error.AuthenticationError as exc:
+        print(f"Stripe authentication error while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service is not configured correctly",
+        ) from exc
+    except stripe.error.APIConnectionError as exc:
+        print(f"Stripe API connection error while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to reach payment service right now",
+        ) from exc
+    except stripe.error.InvalidRequestError as exc:
+        print(f"Stripe invalid request while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to start checkout session",
+        ) from exc
+    except stripe.error.StripeError as exc:
+        print(f"Stripe error while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service error",
+        ) from exc
+
+
+def retrieve_stripe_checkout_session(session_id: str):
+    try:
+        return stripe.checkout.Session.retrieve(session_id)
+    except stripe.error.AuthenticationError as exc:
+        print(f"Stripe authentication error while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service is not configured correctly",
+        ) from exc
+    except stripe.error.APIConnectionError as exc:
+        print(f"Stripe API connection error while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to reach payment service right now",
+        ) from exc
+    except stripe.error.InvalidRequestError as exc:
+        print(f"Stripe invalid request while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to verify payment session",
+        ) from exc
+    except stripe.error.StripeError as exc:
+        print(f"Stripe error while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service error",
+        ) from exc
+
+
 def mapbox_directions_eta_seconds(*, start_lng: float, start_lat: float, end_lng: float, end_lat: float) -> int:
     if not MAPBOX_ACCESS_TOKEN:
         raise HTTPException(status_code=500, detail="MAPBOX_ACCESS_TOKEN is not set")
@@ -386,7 +444,7 @@ def create_checkout_session(
                 }
             )
 
-        session = stripe.checkout.Session.create(
+        session = create_stripe_checkout_session(
             mode="payment",
             line_items=line_items,
             success_url=success_url,
@@ -448,7 +506,7 @@ def confirm_checkout(
         if order["stripe_checkout_session_id"] != payload.session_id:
             raise HTTPException(status_code=400, detail="Checkout session mismatch")
 
-        session = stripe.checkout.Session.retrieve(payload.session_id)
+        session = retrieve_stripe_checkout_session(payload.session_id)
         if session.payment_status != "paid" or session.status != "complete":
             raise HTTPException(status_code=409, detail="Payment has not completed")
 
