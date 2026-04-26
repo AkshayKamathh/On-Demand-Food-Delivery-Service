@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from uuid import UUID
@@ -7,6 +9,21 @@ from deps import get_current_user_id
 from schemas.cart import CartItem, CartItemCreate, CartItemUpdate
 
 router = APIRouter(prefix="/cart", tags=["cart"])
+MAX_ORDER_WEIGHT_LBS = Decimal("200")
+
+
+def current_cart_weight(cur, user_id: UUID) -> Decimal:
+    cur.execute(
+        """
+        SELECT COALESCE(SUM(i.weight * ci.quantity), 0) AS total_weight
+        FROM public.cart_items ci
+        JOIN public.items i ON i.item_id = ci.item_id
+        WHERE ci.user_id = %(uid)s
+        """,
+        {"uid": str(user_id)},
+    )
+    row = cur.fetchone() or {}
+    return Decimal(str(row.get("total_weight") or 0))
 
 # update the cart routers based on added unique cart id
 @router.get("/items", response_model=List[CartItem])
@@ -63,6 +80,15 @@ def add_cart_item(
         if not prod:
             raise HTTPException(status_code=404, detail="Item not found")
 
+        proposed_total_weight = current_cart_weight(cur, user_id) + (
+            Decimal(str(prod["weight"] or 0)) * Decimal(str(payload.quantity))
+        )
+        if proposed_total_weight > MAX_ORDER_WEIGHT_LBS:
+            raise HTTPException(
+                status_code=409,
+                detail="Cart cannot exceed 200 lbs total weight",
+            )
+
         cur.execute(
             """
             INSERT INTO public.cart_items (user_id, item_id, quantity)
@@ -98,6 +124,30 @@ def update_cart_item(
     with get_db() as (conn, cur):
         cur.execute(
             """
+            SELECT ci.id, ci.item_id, ci.quantity, i.weight
+            FROM public.cart_items ci
+            JOIN public.items i ON i.item_id = ci.item_id
+            WHERE ci.id = %(id)s AND ci.user_id = %(uid)s
+            """,
+            {"id": cart_item_id, "uid": str(user_id)},
+        )
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Cart item not found")
+
+        current_total_weight = current_cart_weight(cur, user_id)
+        item_weight = Decimal(str(existing["weight"] or 0))
+        old_line_weight = item_weight * Decimal(str(existing["quantity"] or 0))
+        new_line_weight = item_weight * Decimal(str(payload.quantity))
+        proposed_total_weight = current_total_weight - old_line_weight + new_line_weight
+        if proposed_total_weight > MAX_ORDER_WEIGHT_LBS:
+            raise HTTPException(
+                status_code=409,
+                detail="Cart cannot exceed 200 lbs total weight",
+            )
+
+        cur.execute(
+            """
             UPDATE public.cart_items
             SET quantity = %(q)s, updated_at = now()
             WHERE id = %(id)s AND user_id = %(uid)s
@@ -106,8 +156,6 @@ def update_cart_item(
             {"q": payload.quantity, "id": cart_item_id, "uid": str(user_id)},
         )
         row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Cart item not found")
 
         cur.execute(
             """

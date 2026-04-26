@@ -154,8 +154,8 @@ export default function DashboardPage() {
         weight: product.weight,
         image: product.imageUrl ?? null,
       });
-    } catch (error) {
-      console.error("Failed to add to cart:", error);
+    } catch {
+      // CartProvider surfaces handled cart errors in-app.
     } finally {
       setAddingItemId(null);
     }

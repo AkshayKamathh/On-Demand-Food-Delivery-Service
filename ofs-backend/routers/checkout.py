@@ -54,6 +54,7 @@ START_ADDRESS_LABEL = "188 North 6th Street, San Jose, California 95112, United 
 # If you want perfect accuracy, swap these with Mapbox-geocoded values once.
 START_LNG = -121.8950
 START_LAT = 37.3497
+MAX_ORDER_WEIGHT_LBS = Decimal("200")
 
 
 def as_money(value: Decimal) -> Decimal:
@@ -164,6 +165,12 @@ def build_checkout_summary(cart_rows: List[Dict[str, Any]]) -> CheckoutSummary:
                 weight=float(weight),
                 line_total=serialize_decimal(line_total),
             )
+        )
+
+    if total_weight > MAX_ORDER_WEIGHT_LBS:
+        raise HTTPException(
+            status_code=409,
+            detail="Order exceeds the 200 lb maximum allowed weight",
         )
 
     delivery_fee = delivery_fee_for_weight(total_weight)
