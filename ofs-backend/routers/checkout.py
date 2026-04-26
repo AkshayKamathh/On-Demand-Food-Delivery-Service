@@ -31,7 +31,13 @@ from schemas.checkout import (
     ValidatedAddress,
 )
 from schemas.dispatch import CustomerStopMarker, CustomerTripView, LegPlan
-from schemas.orders import OrderDeliveredResponse, OrderDetail, OrderItem, OrderListItem
+from schemas.orders import (
+    OrderCancelResponse,
+    OrderDeliveredResponse,
+    OrderDetail,
+    OrderItem,
+    OrderListItem,
+)
 
 router = APIRouter(prefix="/checkout", tags=["checkout"])
 
@@ -48,6 +54,7 @@ START_ADDRESS_LABEL = "188 North 6th Street, San Jose, California 95112, United 
 # If you want perfect accuracy, swap these with Mapbox-geocoded values once.
 START_LNG = -121.8950
 START_LAT = 37.3497
+MAX_ORDER_WEIGHT_LBS = Decimal("200")
 
 
 def as_money(value: Decimal) -> Decimal:
@@ -160,6 +167,12 @@ def build_checkout_summary(cart_rows: List[Dict[str, Any]]) -> CheckoutSummary:
             )
         )
 
+    if total_weight > MAX_ORDER_WEIGHT_LBS:
+        raise HTTPException(
+            status_code=409,
+            detail="Order exceeds the 200 lb maximum allowed weight",
+        )
+
     delivery_fee = delivery_fee_for_weight(total_weight)
     total = as_money(subtotal + delivery_fee)
     return CheckoutSummary(
@@ -174,6 +187,64 @@ def build_checkout_summary(cart_rows: List[Dict[str, Any]]) -> CheckoutSummary:
 def require_stripe() -> None:
     if not STRIPE_SECRET_KEY:
         raise HTTPException(status_code=500, detail="STRIPE_SECRET_KEY is not set")
+
+
+def create_stripe_checkout_session(**kwargs):
+    try:
+        return stripe.checkout.Session.create(**kwargs)
+    except stripe.error.AuthenticationError as exc:
+        print(f"Stripe authentication error while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service is not configured correctly",
+        ) from exc
+    except stripe.error.APIConnectionError as exc:
+        print(f"Stripe API connection error while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to reach payment service right now",
+        ) from exc
+    except stripe.error.InvalidRequestError as exc:
+        print(f"Stripe invalid request while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to start checkout session",
+        ) from exc
+    except stripe.error.StripeError as exc:
+        print(f"Stripe error while creating checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service error",
+        ) from exc
+
+
+def retrieve_stripe_checkout_session(session_id: str):
+    try:
+        return stripe.checkout.Session.retrieve(session_id)
+    except stripe.error.AuthenticationError as exc:
+        print(f"Stripe authentication error while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service is not configured correctly",
+        ) from exc
+    except stripe.error.APIConnectionError as exc:
+        print(f"Stripe API connection error while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to reach payment service right now",
+        ) from exc
+    except stripe.error.InvalidRequestError as exc:
+        print(f"Stripe invalid request while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to verify payment session",
+        ) from exc
+    except stripe.error.StripeError as exc:
+        print(f"Stripe error while confirming checkout session: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment service error",
+        ) from exc
 
 
 def mapbox_directions_eta_seconds(*, start_lng: float, start_lat: float, end_lng: float, end_lat: float) -> int:
@@ -373,7 +444,7 @@ def create_checkout_session(
                 }
             )
 
-        session = stripe.checkout.Session.create(
+        session = create_stripe_checkout_session(
             mode="payment",
             line_items=line_items,
             success_url=success_url,
@@ -435,7 +506,7 @@ def confirm_checkout(
         if order["stripe_checkout_session_id"] != payload.session_id:
             raise HTTPException(status_code=400, detail="Checkout session mismatch")
 
-        session = stripe.checkout.Session.retrieve(payload.session_id)
+        session = retrieve_stripe_checkout_session(payload.session_id)
         if session.payment_status != "paid" or session.status != "complete":
             raise HTTPException(status_code=409, detail="Payment has not completed")
 
@@ -651,6 +722,42 @@ def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
         trip_status=trip_status,
         trip_current_stop=int(trip_current_stop) if trip_current_stop is not None else None,
     )
+
+
+@router.post("/orders/{order_id}/cancel", response_model=OrderCancelResponse)
+def cancel_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, status
+            FROM public.orders
+            WHERE id = %(order_id)s AND user_id = %(user_id)s
+            """,
+            {"order_id": order_id, "user_id": str(user_id)},
+        )
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        if order["status"] != "submitted":
+            raise HTTPException(
+                status_code=409,
+                detail="Order can only be cancelled before preparation starts",
+            )
+
+        cur.execute(
+            """
+            UPDATE public.orders
+            SET status = 'cancelled', updated_at = now()
+            WHERE id = %(order_id)s
+            RETURNING id, status
+            """,
+            {"order_id": order_id},
+        )
+        row = cur.fetchone()
+        conn.commit()
+
+    return OrderCancelResponse(order_id=int(row["id"]), status=row["status"])
 
 
 @router.post("/orders/{order_id}/delivered", response_model=OrderDeliveredResponse)

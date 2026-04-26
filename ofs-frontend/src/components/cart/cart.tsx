@@ -11,7 +11,7 @@ interface CartProps {
 }
 
 export default function Cart({ isOpen, onClose }: CartProps) {
-  const { cartItems, updateQuantity, cartCount, subtotal, totalWeight, deliveryFee, total } = useCart();
+  const { cartItems, updateQuantity, cartCount, subtotal, totalWeight, deliveryFee, total, cartError } = useCart();
 
   return (
     <div className={`fixed inset-0 z-50 bg-black/50 dark:bg-black/70 backdrop-blur-sm transition-all ${isOpen ? 'flex' : 'hidden'}`}>
@@ -107,6 +107,11 @@ export default function Cart({ isOpen, onClose }: CartProps) {
 
         {/* Cart Totals */}
         <div className="p-6 border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/50 space-y-3">
+          {cartError && (
+            <div className="rounded-lg border border-red-300/80 dark:border-red-500/40 bg-red-50/60 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+              {cartError}
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-zinc-600 dark:text-zinc-300">Subtotal:</span>
             <span className="text-zinc-600 dark:text-zinc-50">
