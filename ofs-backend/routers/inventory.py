@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional
+from typing import List
+from psycopg.errors import ForeignKeyViolation
 from db import get_db
 from schemas.inventory import InventoryItem, InventoryUpdate, InventoryCreate
 
@@ -38,7 +39,7 @@ def list_inventory():
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT item_id, description, category_id, price, weight, stock
+            SELECT item_id, description, category_id, price, weight, stock, image_url
             FROM public.items
             ORDER BY item_id
             """
@@ -59,6 +60,7 @@ def list_inventory():
                 weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
                 stock=stock,
                 status=status_from_stock(stock),
+                image_url=r["image_url"],
             )
         )
     return items
@@ -71,7 +73,7 @@ def get_inventory_item(sku: str):
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT item_id, description, category_id, price, weight, stock
+            SELECT item_id, description, category_id, price, weight, stock, image_url
             FROM public.items
             WHERE item_id = %(item_id)s
             """,
@@ -93,6 +95,7 @@ def get_inventory_item(sku: str):
         weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
         stock=stock,
         status=status_from_stock(stock),
+        image_url=r["image_url"],
     )
 
 #PATCH /inventory/{sku}
@@ -117,6 +120,10 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         set_clauses.append("stock = %(stock)s")
         params["stock"] = data["stock"]
 
+    if "image_url" in data:
+        set_clauses.append("image_url = %(image_url)s")
+        params["image_url"] = data["image_url"]
+
     # Optional: allow updating category if your payload includes it and you want to support it later.
     # If your InventoryUpdate schema does not have category_id, ignore this.
     if "category_id" in data and data["category_id"] is not None:
@@ -124,7 +131,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         params["category_id"] = data["category_id"]
 
     if not set_clauses:
-        raise HTTPException(status_code=400, detail="No updatable fields provided (price/stock)")
+        raise HTTPException(status_code=400, detail="No updatable fields provided")
 
     with get_db() as (conn, cur):
         cur.execute(
@@ -132,7 +139,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
             UPDATE public.items
             SET {", ".join(set_clauses)}
             WHERE item_id = %(item_id)s
-            RETURNING item_id, description, category_id, price, weight, stock
+            RETURNING item_id, description, category_id, price, weight, stock, image_url
             """,
             params,
         )
@@ -152,6 +159,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
         stock=stock,
         status=status_from_stock(stock),
+        image_url=r["image_url"],
     )
 
 #DELETE /inventory/{sku}
@@ -159,15 +167,21 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
 def delete_inventory_item(sku: str):
     item_id = parse_item_id(sku)
 
-    with get_db() as (conn, cur):
-        cur.execute(
-            "DELETE FROM public.items WHERE item_id = %(item_id)s RETURNING item_id",
-            {"item_id": item_id},
-        )
-        r = cur.fetchone()
-        if not r:
-            raise HTTPException(status_code=404, detail="Item not found")
-        conn.commit()
+    try:
+        with get_db() as (conn, cur):
+            cur.execute(
+                "DELETE FROM public.items WHERE item_id = %(item_id)s RETURNING item_id",
+                {"item_id": item_id},
+            )
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Item not found")
+            conn.commit()
+    except ForeignKeyViolation as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Item cannot be deleted because it is referenced by existing orders or cart records",
+        ) from exc
 
     return {"deleted": str(item_id)}
 
@@ -186,7 +200,7 @@ def create_inventory_item(payload: InventoryCreate):
             """
             INSERT INTO public.items (description, category_id, price, weight, stock, image_url)
             VALUES (%(desc)s, %(category_id)s, %(price)s, %(weight)s, %(stock)s, %(image_url)s)
-            RETURNING item_id, description, category_id, price, weight, stock
+            RETURNING item_id, description, category_id, price, weight, stock, image_url
             """,
             {
                 "desc": payload.name,
@@ -194,7 +208,7 @@ def create_inventory_item(payload: InventoryCreate):
                 "price": payload.price,
                 "weight": payload.weight_lb,
                 "stock": payload.stock,
-                "image_url": None,
+                "image_url": payload.image_url,
             },
         )
         r = cur.fetchone()
@@ -211,4 +225,5 @@ def create_inventory_item(payload: InventoryCreate):
         weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
         stock=stock,
         status=status_from_stock(stock),
+        image_url=r["image_url"],
     )

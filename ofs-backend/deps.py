@@ -29,7 +29,6 @@ def _get_jwks(jwks_url: str) -> dict:
 
 
 def get_current_user_id(authorization: str = Header(None)) -> dict:
-    """Like get_current_user_id but returns the full JWT payload."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
@@ -55,10 +54,26 @@ def get_current_user_id(authorization: str = Header(None)) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-def require_manager(
-    authorization: str = Header(None),) -> UUID:
+def require_user(payload: dict = Depends(get_current_user_id)) -> UUID:
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Token missing subject claim")
 
-    user_id = get_current_user_id(authorization)
+    try:
+        return UUID(sub)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid user ID in token")
+
+
+def require_manager(payload: dict = Depends(get_current_user_id)) -> UUID:
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Token missing subject claim")
+
+    try:
+        user_id = UUID(sub)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid user ID in token")
 
     with get_db() as (conn, cur):
         cur.execute(

@@ -12,7 +12,7 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, Query
 from math import radians, sin, cos, sqrt, atan2
 from db import get_db
-from deps import get_current_user_id
+from deps import require_user
 from routers.dispatch import (
     SIMULATION_SPEED,
     _parse_legs,
@@ -331,7 +331,7 @@ def validate_address(payload: AddressValidationRequest):
 
 
 @router.get("/summary", response_model=CheckoutSummary)
-def get_checkout_summary(user_id: UUID = Depends(get_current_user_id)):
+def get_checkout_summary(user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         rows = load_cart_snapshot(cur, user_id)
     return build_checkout_summary(rows)
@@ -340,7 +340,7 @@ def get_checkout_summary(user_id: UUID = Depends(get_current_user_id)):
 @router.post("/session", response_model=CheckoutSessionResponse)
 def create_checkout_session(
     payload: CheckoutSessionCreate,
-    user_id: UUID = Depends(get_current_user_id),
+    user_id: UUID = Depends(require_user),
 ):
     require_stripe()
 
@@ -503,7 +503,7 @@ def create_checkout_session(
 @router.post("/confirm", response_model=OrderConfirmationResponse)
 def confirm_checkout(
     payload: CheckoutConfirmRequest,
-    user_id: UUID = Depends(get_current_user_id),
+    user_id: UUID = Depends(require_user),
 ):
     require_stripe()
 
@@ -613,7 +613,7 @@ def confirm_checkout(
 
 
 @router.get("/orders", response_model=List[OrderListItem])
-def list_orders(user_id: UUID = Depends(get_current_user_id)):
+def list_orders(user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         cur.execute(
             """
@@ -638,7 +638,7 @@ def list_orders(user_id: UUID = Depends(get_current_user_id)):
 
 
 @router.get("/orders/{order_id}", response_model=OrderDetail)
-def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+def get_order(order_id: int, user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         # Reconcile any milestones the simulator clock has crossed for this
         # order's trip so the response reflects the live state.
@@ -753,7 +753,7 @@ def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderCancelResponse)
-def cancel_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+def cancel_order(order_id: int, user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         cur.execute(
             """
@@ -789,7 +789,7 @@ def cancel_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
 
 
 @router.post("/orders/{order_id}/delivered", response_model=OrderDeliveredResponse)
-def mark_delivered(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+def mark_delivered(order_id: int, user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         cur.execute(
             """
@@ -813,7 +813,7 @@ def mark_delivered(order_id: int, user_id: UUID = Depends(get_current_user_id)):
 
 
 @router.get("/orders/{order_id}/eta")
-def get_order_eta(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+def get_order_eta(order_id: int, user_id: UUID = Depends(require_user)):
     """
     Real-time ETA derived from the trip simulator clock. ETA = remaining
     leg duration (down to and including the customer's stop), divided by the
@@ -902,7 +902,7 @@ def get_order_eta(order_id: int, user_id: UUID = Depends(get_current_user_id)):
 
 
 @router.get("/orders/{order_id}/trip", response_model=CustomerTripView)
-def get_order_trip_view(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+def get_order_trip_view(order_id: int, user_id: UUID = Depends(require_user)):
     """
     Customer-facing live trip plan: the full multi-stop polyline + per-leg
     durations + a server clock anchor. Other customers' addresses/names are
