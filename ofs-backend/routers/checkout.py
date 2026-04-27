@@ -145,7 +145,8 @@ def load_cart_snapshot(cur, user_id: UUID) -> List[Dict[str, Any]]:
           i.price,
           i.weight,
           i.stock,
-          i.image_url
+          i.image_url,
+          i.is_active
         FROM public.cart_items ci
         JOIN public.items i ON i.item_id = ci.item_id
         WHERE ci.user_id = %(uid)s
@@ -158,6 +159,12 @@ def load_cart_snapshot(cur, user_id: UUID) -> List[Dict[str, Any]]:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
     for row in rows:
+        if not row["is_active"]:
+            raise HTTPException(
+                status_code=409,
+                detail=f"'{row['description']}' is no longer available and must be removed from your cart.",
+            )
+
         stock = int(row["stock"] or 0)
         quantity = int(row["quantity"] or 0)
         if quantity <= 0:
@@ -169,7 +176,6 @@ def load_cart_snapshot(cur, user_id: UUID) -> List[Dict[str, Any]]:
             )
 
     return rows
-
 
 def build_checkout_summary(cart_rows: List[Dict[str, Any]]) -> CheckoutSummary:
     items: List[CheckoutItem] = []
