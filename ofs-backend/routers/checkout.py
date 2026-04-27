@@ -435,8 +435,8 @@ def create_checkout_session(
             )
 
         success_url = (
-            f"{FRONTEND_BASE_URL}/checkout?status=success&order_id={order_id}"
-            "&session_id={CHECKOUT_SESSION_ID}"
+            f"{FRONTEND_BASE_URL}/orders/{order_id}"
+            "?status=success&session_id={CHECKOUT_SESSION_ID}"
         )
         cancel_url = f"{FRONTEND_BASE_URL}/checkout?status=cancelled&order_id={order_id}"
 

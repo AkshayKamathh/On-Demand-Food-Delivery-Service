@@ -1,12 +1,14 @@
 // src/app/(shop)/orders/[orderId]/page.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useCart } from "@/context/CartContext";
+
 
 const MapComponent = dynamic(() => import("@/components/MapComponent"), {
   ssr: false,
@@ -79,6 +81,9 @@ export default function OrderStatusPage() {
   const [deliveredBanner, setDeliveredBanner] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState("");
+  const searchParams = useSearchParams();
+  const { loadCart } = useCart();
+  const confirmationStarted = useRef(false);
 
   const [liveTrip, setLiveTrip] = useState<{
     status: "planned" | "in_progress" | "completed" | "cancelled" | null;
@@ -103,6 +108,33 @@ export default function OrderStatusPage() {
     },
     [],
   );
+
+  useEffect(() => {
+    const status = searchParams.get("status");
+    const sessionId = searchParams.get("session_id");
+  
+    if (status !== "success" || !sessionId || !orderId || confirmationStarted.current) return;
+    confirmationStarted.current = true;
+  
+    const confirmOrder = async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/checkout/confirm`, {
+          method: "POST",
+          headers: await getAuthHeaders(),
+          body: JSON.stringify({ order_id: orderId, session_id: sessionId }),
+        });
+        if (res.ok) {
+          await loadCart();
+          // Clear the query params without navigating away
+          router.replace(`/orders/${orderId}`);
+        }
+      } catch {
+        // order polling will reflect the real state regardless
+      }
+    };
+  
+    confirmOrder().catch(console.error);
+  }, [orderId, router, searchParams]);
 
   useEffect(() => {
     let cancelled = false;
