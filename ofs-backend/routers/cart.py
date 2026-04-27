@@ -32,16 +32,17 @@ def list_cart_items(user_id: UUID = Depends((require_user))):
         cur.execute(
             """
             SELECT
-              ci.id,
-              ci.item_id,
-              ci.quantity,
-              i.description,
-              i.price,
-              i.weight,
-              i.image_url
+            ci.id,
+            ci.item_id,
+            ci.quantity,
+            i.description,
+            i.price,
+            i.weight,
+            i.image_url
             FROM public.cart_items ci
             JOIN public.items i ON i.item_id = ci.item_id
             WHERE ci.user_id = %(uid)s
+                AND i.is_active = true
             ORDER BY ci.updated_at DESC, ci.id DESC
             """,
             {"uid": str(user_id)},
