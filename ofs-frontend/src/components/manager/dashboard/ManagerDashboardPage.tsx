@@ -11,6 +11,7 @@ type InventoryItem = {
   weight_lb: number;
   stock: number;
   status: string;
+  is_active: boolean;
 };
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -137,7 +138,7 @@ export default function ManagerDashboardPage() {
   }
 
   async function deleteItem(sku: string) {
-    if (!window.confirm(`Delete item ${sku}?`)) return;
+    if (!window.confirm(`Remove item ${sku} from the store?`)) return;
     try {
       setError(""); setSaveMsg("");
       const res = await fetch(`${BASE_URL}/inventory/${encodeURIComponent(sku)}`, { method: "DELETE" });
@@ -145,11 +146,32 @@ export default function ManagerDashboardPage() {
         const errBody = await res.json().catch(() => null);
         throw new Error(errBody?.detail ? String(errBody.detail) : `HTTP ${res.status}`);
       }
-      setInventory((prev) => prev.filter((x: any) => x.sku !== sku));
-      if (skuInput.trim() === sku) { setSkuInput(""); setStockInput(""); setPriceInput(""); }
-      setSaveMsg(`Deleted ${sku}.`);
+      const updated = await res.json();
+      // Update the row in place instead of removing it, so Restore button appears
+      setInventory((prev) => prev.map((x) => (x.sku === updated.sku ? updated : x)));
+      setSaveMsg(`Removed ${sku} from store. It can be restored.`);
     } catch (e: any) {
-      setSaveMsg(`Delete failed: ${e?.message ?? "Unknown error"}`);
+      setSaveMsg(`Remove failed: ${e?.message ?? "Unknown error"}`);
+    }
+  }
+
+  async function restoreItem(sku: string) {
+    try {
+      setError(""); setSaveMsg("");
+      const res = await fetch(`${BASE_URL}/inventory/${encodeURIComponent(sku)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: true }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.detail ? String(errBody.detail) : `HTTP ${res.status}`);
+      }
+      const updated = await res.json();
+      setInventory((prev) => prev.map((x) => (x.sku === updated.sku ? updated : x)));
+      setSaveMsg(`Restored ${sku}.`);
+    } catch (e: any) {
+      setSaveMsg(`Restore failed: ${e?.message ?? "Unknown error"}`);
     }
   }
 
@@ -264,7 +286,7 @@ export default function ManagerDashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-zinc-200 dark:divide-zinc-700/50">
                     {inventory.map((p) => (
-                      <tr key={p.sku} className="text-zinc-900 dark:text-zinc-100">
+                      <tr key={p.sku} className={`text-zinc-900 dark:text-zinc-100 ${!p.is_active ? "opacity-50" : ""}`}>
                         <td className="px-4 py-3 whitespace-nowrap">{p.sku}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{p.name}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-zinc-600 dark:text-zinc-300">{p.category}</td>
@@ -278,10 +300,16 @@ export default function ManagerDashboardPage() {
                           <button onClick={() => startEdit(p)} className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-white/60 dark:hover:bg-zinc-900/30 transition-colors">
                             Edit
                           </button>
-                          <button onClick={() => deleteItem(p.sku)} className="ml-2 px-3 py-1.5 rounded-lg border border-red-300/80 dark:border-red-500/40 text-red-600 dark:text-red-300 hover:bg-red-50/60 dark:hover:bg-red-900/20 transition-colors">
-                            Remove
-                          </button>
-                        </td>
+                          {p.is_active ? (
+                            <button onClick={() => deleteItem(p.sku)} className="ml-2 px-3 py-1.5 rounded-lg border border-red-300/80 dark:border-red-500/40 text-red-600 dark:text-red-300 hover:bg-red-50/60 dark:hover:bg-red-900/20 transition-colors">
+                              Remove
+                            </button>
+                          ) : (
+                            <button onClick={() => restoreItem(p.sku)} className="ml-2 px-3 py-1.5 rounded-lg border border-emerald-300/80 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50/60 dark:hover:bg-emerald-900/20 transition-colors">
+                              Restore
+                            </button>
+                          )}
+                      </td>
                       </tr>
                     ))}
                     {!loading && !error && inventory.length === 0 && (
