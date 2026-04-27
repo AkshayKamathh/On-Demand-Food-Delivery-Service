@@ -10,7 +10,7 @@ import math
 import requests
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Query
-
+from math import radians, sin, cos, sqrt, atan2
 from db import get_db
 from deps import get_current_user_id
 from routers.dispatch import (
@@ -56,6 +56,15 @@ START_LNG = -121.8950
 START_LAT = 37.3497
 MAX_ORDER_WEIGHT_LBS = Decimal("200")
 
+MAX_DELIVERY_MILES = 30
+
+def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 3958.8  # Earth radius in miles
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 def as_money(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -97,9 +106,26 @@ def validate_delivery_address(address: str) -> ValidatedAddress:
 
     feature = features[0]
     center = feature.get("center") or [None, None]
+   
+    if not center or len(center) < 2:
+        raise HTTPException(status_code=400, detail="Validated address is missing coordinates")
+
     longitude, latitude = center[0], center[1]
+
+    
     if longitude is None or latitude is None:
         raise HTTPException(status_code=400, detail="Validated address is missing coordinates")
+
+    distance = haversine_miles(START_LAT, START_LNG, float(latitude), float(longitude))
+
+    # Add this temporarily to debug:
+    print(f"[validate] address={address!r} lat={latitude} lng={longitude} distance={distance:.2f} mi")
+
+    if distance > MAX_DELIVERY_MILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Address is {distance:.1f} miles away — delivery is only available within {MAX_DELIVERY_MILES} miles of our store.",
+        )
 
     return ValidatedAddress(
         address=feature.get("place_name") or address.strip(),
@@ -298,6 +324,8 @@ def search_delivery_addresses(q: str = Query(..., min_length=3, max_length=200))
 def validate_address(payload: AddressValidationRequest):
     try:
         return validate_delivery_address(payload.address)
+    except HTTPException:
+        raise
     except requests.RequestException:
         raise HTTPException(status_code=502, detail="Mapbox address validation failed")
 

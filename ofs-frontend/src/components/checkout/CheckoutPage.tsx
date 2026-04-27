@@ -212,7 +212,10 @@ export default function CheckoutPage() {
     return () => window.clearTimeout(timeoutId);
   }, [address, validatedAddress]);
 
-  const handleValidateAddress = async () => {
+  const handleValidateAddress = async (addressOverride?: string) => {
+    const addressToValidate = (addressOverride ?? address).trim();
+
+    if (!addressToValidate) return;
     try {
       setAddressValidationLoading(true);
       setAddressError("");
@@ -221,7 +224,7 @@ export default function CheckoutPage() {
       const res = await fetch(`${API_BASE_URL}/checkout/address/validate`, {
         method: "POST",
         headers: await getAuthHeaders(),
-        body: JSON.stringify({ address: address.trim() }),
+        body: JSON.stringify({ address: addressToValidate }),
       });
 
       if (!res.ok) {
@@ -235,7 +238,7 @@ export default function CheckoutPage() {
       setSuggestions([]);
     } catch (error) {
       setValidatedAddress(null);
-      setAddressError(error instanceof Error ? error.message : "Unable to validate address");
+      setAddressError(error instanceof Error ? error.message : "Unable to validate address, Address may be too far from OFS grocery store (30 mile radius)");
     } finally {
       setAddressValidationLoading(false);
     }
@@ -357,13 +360,10 @@ export default function CheckoutPage() {
                       className="w-full px-4 py-3 text-left bg-white/70 dark:bg-zinc-900/40 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border-b last:border-b-0 border-zinc-200 dark:border-zinc-800"
                       onClick={() => {
                         setAddress(suggestion.address);
-                        setValidatedAddress({
-                          address: suggestion.address,
-                          latitude: suggestion.latitude,
-                          longitude: suggestion.longitude,
-                        });
+                        setValidatedAddress(null);
                         setSuggestions([]);
                         setAddressError("");
+                        handleValidateAddress(suggestion.address);
                       }}
                     >
                       {suggestion.label}
