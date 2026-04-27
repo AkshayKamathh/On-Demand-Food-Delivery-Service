@@ -5,7 +5,7 @@ from typing import List
 from uuid import UUID
 
 from db import get_db
-from deps import get_current_user_id
+from deps import require_user
 from schemas.cart import CartItem, CartItemCreate, CartItemUpdate
 
 router = APIRouter(prefix="/cart", tags=["cart"])
@@ -27,7 +27,7 @@ def current_cart_weight(cur, user_id: UUID) -> Decimal:
 
 # update the cart routers based on added unique cart id
 @router.get("/items", response_model=List[CartItem])
-def list_cart_items(user_id: UUID = Depends(get_current_user_id)):
+def list_cart_items(user_id: UUID = Depends((require_user))):
     with get_db() as (conn, cur):
         cur.execute(
             """
@@ -65,7 +65,7 @@ def list_cart_items(user_id: UUID = Depends(get_current_user_id)):
 @router.post("/items", response_model=CartItem, status_code=201)
 def add_cart_item(
     payload: CartItemCreate,
-    user_id: UUID = Depends(get_current_user_id),
+    user_id: UUID = Depends((require_user)),
 ):
     with get_db() as (conn, cur):
         cur.execute(
@@ -119,7 +119,7 @@ def add_cart_item(
 def update_cart_item(
     cart_item_id: int,
     payload: CartItemUpdate,
-    user_id: UUID = Depends(get_current_user_id),
+    user_id: UUID = Depends(require_user),
 ):
     with get_db() as (conn, cur):
         cur.execute(
@@ -180,7 +180,7 @@ def update_cart_item(
 
 
 @router.delete("/items/{cart_item_id}", status_code=204)
-def delete_cart_item(cart_item_id: int, user_id: UUID = Depends(get_current_user_id)):
+def delete_cart_item(cart_item_id: int, user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         cur.execute(
             """
@@ -197,7 +197,7 @@ def delete_cart_item(cart_item_id: int, user_id: UUID = Depends(get_current_user
 
 
 @router.delete("/items", status_code=204)
-def clear_cart(user_id: UUID = Depends(get_current_user_id)):
+def clear_cart(user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         cur.execute(
             "DELETE FROM public.cart_items WHERE user_id = %(uid)s",
