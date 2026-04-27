@@ -84,7 +84,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (!res.ok) {
-        setCartItems([]);
         return;
       }
 
@@ -102,7 +101,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }))
       );
     } catch {
-      setCartItems([]);
+      return;
     }
   };
 
@@ -175,7 +174,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new Error(message);
       }
       setCartError("");
-      setCartItems((prev) => prev.filter((x) => x.id !== id));
+      await loadCart();
       return;
     }
 
@@ -197,11 +196,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       throw new Error(message);
     }
 
-    const saved = await res.json();
+    await res.json();
     setCartError("");
-    setCartItems((prev) =>
-      prev.map((x) => (x.id === id ? { ...x, quantity: saved.quantity } : x))
-    );
+    await loadCart();
   };
 
   useEffect(() => {

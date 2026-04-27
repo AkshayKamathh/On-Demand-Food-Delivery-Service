@@ -407,54 +407,74 @@ export default function CheckoutPage() {
             </div>
 
             <div className="bg-white/80 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Payment</h2>
-              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                Stripe Checkout handles card entry and payment confirmation after the backend
-                validates your cart and current inventory.
-              </p>
-
-              <div className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5 bg-zinc-50/60 dark:bg-zinc-950/30 space-y-2 text-sm text-zinc-600 dark:text-zinc-300">
-                <p>1. Validate your delivery address.</p>
-                <p>2. We verify the cart and stock on the backend.</p>
-                <p>3. Stripe collects payment on a hosted checkout page.</p>
-                <p>4. After payment, the order is confirmed and inventory is updated.</p>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Items in Your Order</h2>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                    Double-check quantities and totals before continuing to payment.
+                  </p>
+                </div>
+                <Link
+                  href="/userDashboard"
+                  className="text-sm font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-300 dark:hover:text-emerald-200 transition-colors"
+                >
+                  Keep shopping
+                </Link>
               </div>
 
-              <button
-                type="button"
-                disabled={checkoutLoading || !validatedAddress || lineItems.length === 0}
-                className="mt-5 w-full px-4 py-3 rounded-xl bg-emerald-500 text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                title="Validate the address first, then continue to Stripe"
-                onClick={handleStartCheckout}
-              >
-                {checkoutLoading ? "Redirecting to Stripe..." : "Continue to Stripe"}
-              </button>
+              <div className="mt-5 space-y-3">
+                {lineItems.length > 0 ? (
+                  lineItems.map((item) => (
+                    <div
+                      key={item.item_id}
+                      className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-950/30 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium text-zinc-900 dark:text-zinc-50">
+                          {item.description}
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                          Qty: {item.quantity} | {item.weight.toFixed(1)} lb each
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold text-zinc-900 dark:text-zinc-50">
+                          ${item.line_total.toFixed(2)}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                          ${item.price.toFixed(2)} each
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-5 text-sm text-zinc-600 dark:text-zinc-300">
+                    {cartItems.length === 0 ? "Your cart is empty." : "Loading your order items..."}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white/80 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">Payment</h2>
+
+              <div className="mt-5">
+                <button
+                  type="button"
+                  disabled={checkoutLoading || !validatedAddress || lineItems.length === 0}
+                  className="w-full px-4 py-3 rounded-xl bg-emerald-500 text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="Validate the address first, then continue to Stripe"
+                  onClick={handleStartCheckout}
+                >
+                  {checkoutLoading ? "Redirecting to Stripe..." : "Continue to Payment"}
+                </button>
+              </div>
             </div>
           </section>
 
           <aside className="space-y-6">
             <div className="bg-white/80 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Order Summary</h2>
-
-              <div className="mt-4 space-y-3">
-                {lineItems.length > 0 ? (
-                  lineItems.map((item) => (
-                    <div key={item.item_id} className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-medium">{item.description}</div>
-                        <div className="text-xs text-zinc-600 dark:text-zinc-300">
-                          Qty: {item.quantity} | Weight: {item.weight.toFixed(1)} lb
-                        </div>
-                      </div>
-                      <div className="font-semibold">${item.line_total.toFixed(2)}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                    {cartItems.length === 0 ? "Your cart is empty." : "Loading checkout summary..."}
-                  </div>
-                )}
-              </div>
+              <h2 className="text-lg font-semibold">Order Totals</h2>
 
               <div className="mt-6 border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-2 text-sm">
                 <div className="flex justify-between">

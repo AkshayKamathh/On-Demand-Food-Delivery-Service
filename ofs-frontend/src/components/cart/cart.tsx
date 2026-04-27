@@ -80,7 +80,11 @@ export default function Cart({ isOpen, onClose }: CartProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                    onClick={() => {
+                      updateQuantity(item.id, item.quantity - 1).catch(() => {
+                        // CartProvider already surfaces these errors in-app.
+                      });
+                    }}
                     className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
                   >
                     <Minus className="h-3.5 w-3.5 text-zinc-900 dark:text-zinc-100" />
@@ -89,7 +93,11 @@ export default function Cart({ isOpen, onClose }: CartProps) {
                     {item.quantity}
                   </span>
                   <button
-                    onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                    onClick={() => {
+                      updateQuantity(item.id, item.quantity + 1).catch(() => {
+                        // CartProvider already surfaces these errors in-app.
+                      });
+                    }}
                     className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5 text-zinc-900 dark:text-zinc-100" />
