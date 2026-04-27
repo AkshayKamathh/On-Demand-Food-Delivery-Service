@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ManagerNavbar from "@/components/manager/ManagerNavbar";
-import { DollarSign, ShoppingBag, Users, Package } from "lucide-react";
+import { DollarSign, ShoppingBag, Users, Package, Download } from "lucide-react";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -100,6 +100,56 @@ export default function ManagerSalesPage() {
     () => Math.max(1, ...monthlyRevenue.map((m) => m.revenue)),
     [monthlyRevenue],
   );
+
+  const [exporting, setExporting] = useState(false);
+
+  async function exportCSV() {
+    if (!summary) return;
+    try {
+      setExporting(true);
+      setError("");
+
+      const res = await fetch(`${BASE_URL}/manager/sales/products?year=${summary.year}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const products = (await res.json()) as {
+        name: string;
+        sku: string;
+        category: string;
+        units: number;
+        revenue: number;
+      }[];
+
+      const escape = (v: string | number) => {
+        const s = String(v);
+        return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const row = (...cells: (string | number)[]) => cells.map(escape).join(",");
+
+      const header = row("Product", "SKU", "Category", "Units Sold", "Revenue (USD)");
+      const body = products.map((p) =>
+        row(p.name, p.sku, p.category, p.units, p.revenue.toFixed(2)),
+      );
+      const totalUnits = products.reduce((s, p) => s + p.units, 0);
+      const totalRevenue = products.reduce((s, p) => s + p.revenue, 0);
+      const totals = row("TOTAL", "", "", totalUnits, totalRevenue.toFixed(2));
+
+      const csv = "\uFEFF" + [header, ...body, totals].join("\r\n") + "\r\n";
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `product-sales-${summary.year}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to export CSV");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <>
@@ -225,8 +275,13 @@ export default function ManagerSalesPage() {
                 <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Top Selling Products</h2>
                 <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Ranked by units sold this period</p>
               </div>
-              <button className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors shadow-sm">
-                Export CSV
+              <button
+                onClick={exportCSV}
+                disabled={!summary || loading || exporting}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors shadow-sm"
+              >
+                <Download className="h-4 w-4" />
+                {exporting ? "Exporting…" : "Export CSV"}
               </button>
             </div>
 

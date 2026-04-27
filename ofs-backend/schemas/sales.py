@@ -28,6 +28,14 @@ class TopProductItem(BaseModel):
     revenue: float
 
 
+class ProductSalesItem(BaseModel):
+    name: str
+    sku: str
+    category: str
+    units: int
+    revenue: float
+
+
 class SalesSummaryResponse(BaseModel):
     year: int
     stats: SalesStats
