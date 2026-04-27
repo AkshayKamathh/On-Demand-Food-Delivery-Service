@@ -118,8 +118,9 @@ def validate_delivery_address(address: str) -> ValidatedAddress:
 
     distance = haversine_miles(START_LAT, START_LNG, float(latitude), float(longitude))
 
-    # Add this temporarily to debug:
-    print(f"[validate] address={address!r} lat={latitude} lng={longitude} distance={distance:.2f} mi")
+    # This is a hard business constraint (not just UI validation): we enforce the
+    # delivery radius server-side so orders created via direct API calls still
+    # respect the same availability rules as the frontend.
 
     if distance > MAX_DELIVERY_MILES:
         raise HTTPException(

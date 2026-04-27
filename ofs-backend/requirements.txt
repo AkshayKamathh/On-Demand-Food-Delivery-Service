@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 psycopg[binary]
 python-jose[cryptography]
+python-dotenv
 requests
 stripe
 email-validator
