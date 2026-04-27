@@ -339,7 +339,7 @@ def get_checkout_summary(user_id: UUID = Depends(require_user)):
 
 
 @router.get("/last-order-address", response_model=Optional[LastOrderAddressResponse])
-def get_last_order_address(user_id: UUID = Depends(get_current_user_id)):
+def get_last_order_address(user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         cur.execute(
             """
