@@ -57,9 +57,48 @@ export default function CheckoutPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [confirmationLoading, setConfirmationLoading] = useState(false);
+  const [prefilledFromLastOrder, setPrefilledFromLastOrder] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirmationStarted = useRef(false);
+
+  const prefillFromLastOrder = async ({ hasDisplayName }: { hasDisplayName: boolean }) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/checkout/last-order-address`, {
+        headers: await getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        return;
+      }
+
+      const last = (await res.json()) as {
+        recipient_name: string;
+        delivery_address: string;
+        delivery_address_latitude: number;
+        delivery_address_longitude: number;
+        delivery_notes: string | null;
+      } | null;
+
+      if (!last) {
+        return;
+      }
+
+      if (!hasDisplayName) {
+        setName(last.recipient_name);
+      }
+      setAddress(last.delivery_address);
+      setDeliveryNotes(last.delivery_notes ?? "");
+      setValidatedAddress({
+        address: last.delivery_address,
+        latitude: last.delivery_address_latitude,
+        longitude: last.delivery_address_longitude,
+      });
+      setPrefilledFromLastOrder(true);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const refreshSummary = async () => {
     try {
@@ -106,6 +145,7 @@ export default function CheckoutPage() {
           .join(" ");
       setName(displayName || "");
       await refreshSummary();
+      await prefillFromLastOrder({ hasDisplayName: Boolean(displayName) });
     };
 
     checkAuth().catch(console.error);
@@ -322,6 +362,7 @@ export default function CheckoutPage() {
                     setAddress(e.target.value);
                     setValidatedAddress(null);
                     setAddressError("");
+                    setPrefilledFromLastOrder(false);
                   }}
                 />
                 <textarea
@@ -360,6 +401,11 @@ export default function CheckoutPage() {
                 {addressLookupLoading && (
                   <span className="text-sm text-zinc-600 dark:text-zinc-300">
                     Searching Mapbox suggestions...
+                  </span>
+                )}
+                {prefilledFromLastOrder && validatedAddress && !addressError && (
+                  <span className="text-sm text-zinc-600 dark:text-zinc-300">
+                    Filled from your last order.
                   </span>
                 )}
                 {validatedAddress && !addressError && (
