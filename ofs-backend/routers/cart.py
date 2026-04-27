@@ -27,7 +27,7 @@ def current_cart_weight(cur, user_id: UUID) -> Decimal:
 
 # update the cart routers based on added unique cart id
 @router.get("/items", response_model=List[CartItem])
-def list_cart_items(user_id: UUID = Depends(require_user)):
+def list_cart_items(user_id: UUID = Depends((require_user))):
     with get_db() as (conn, cur):
         cur.execute(
             """
@@ -65,7 +65,7 @@ def list_cart_items(user_id: UUID = Depends(require_user)):
 @router.post("/items", response_model=CartItem, status_code=201)
 def add_cart_item(
     payload: CartItemCreate,
-    user_id: UUID = Depends(require_user),
+    user_id: UUID = Depends((require_user)),
 ):
     with get_db() as (conn, cur):
         cur.execute(

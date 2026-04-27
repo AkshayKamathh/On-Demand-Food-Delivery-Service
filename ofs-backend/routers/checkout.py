@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 from uuid import UUID
 
@@ -27,6 +27,7 @@ from schemas.checkout import (
     CheckoutSessionCreate,
     CheckoutSessionResponse,
     CheckoutSummary,
+    LastOrderAddressResponse,
     OrderConfirmationResponse,
     ValidatedAddress,
 )
@@ -335,6 +336,36 @@ def get_checkout_summary(user_id: UUID = Depends(require_user)):
     with get_db() as (conn, cur):
         rows = load_cart_snapshot(cur, user_id)
     return build_checkout_summary(rows)
+
+
+@router.get("/last-order-address", response_model=Optional[LastOrderAddressResponse])
+def get_last_order_address(user_id: UUID = Depends(require_user)):
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT recipient_name, delivery_address,
+                   delivery_address_latitude, delivery_address_longitude,
+                   delivery_notes
+            FROM public.orders
+            WHERE user_id = %(user_id)s
+              AND payment_status = 'paid'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            {"user_id": str(user_id)},
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return LastOrderAddressResponse(
+        recipient_name=row["recipient_name"],
+        delivery_address=row["delivery_address"],
+        delivery_address_latitude=float(row["delivery_address_latitude"]),
+        delivery_address_longitude=float(row["delivery_address_longitude"]),
+        delivery_notes=row.get("delivery_notes"),
+    )
 
 
 @router.post("/session", response_model=CheckoutSessionResponse)

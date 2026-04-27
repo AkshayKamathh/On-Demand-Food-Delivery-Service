@@ -29,6 +29,7 @@ def _get_jwks(jwks_url: str) -> dict:
 
 
 def get_current_user_id(authorization: str = Header(None)) -> dict:
+    """Validates the JWT and returns the full payload (works for users and managers)."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
@@ -55,10 +56,10 @@ def get_current_user_id(authorization: str = Header(None)) -> dict:
 
 
 def require_user(payload: dict = Depends(get_current_user_id)) -> UUID:
+    """Extracts and returns the user UUID from the JWT payload."""
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="Token missing subject claim")
-
     try:
         return UUID(sub)
     except ValueError:
@@ -66,10 +67,10 @@ def require_user(payload: dict = Depends(get_current_user_id)) -> UUID:
 
 
 def require_manager(payload: dict = Depends(get_current_user_id)) -> UUID:
+    """Ensures the token belongs to a manager and returns their UUID."""
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="Token missing subject claim")
-
     try:
         user_id = UUID(sub)
     except ValueError:
