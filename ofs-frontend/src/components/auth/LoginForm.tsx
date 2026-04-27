@@ -64,7 +64,7 @@ export default function LoginForm() {
       return;
     }
 
-    router.replace(profile?.role === "manager" ? "/managerDashboard" : "/userDashboard");
+    router.replace(profile?.role === "manager" ? "/manager/dashboard" : "/userDashboard");
   } catch (err: any) {
     setError(err?.message ?? "Something went wrong.");
   } finally {
