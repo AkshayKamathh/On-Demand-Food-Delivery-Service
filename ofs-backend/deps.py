@@ -1,9 +1,10 @@
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Depends
 from uuid import UUID
 from jose import jwt, JWTError
 import os
 import requests
 import time
+from db import get_db
 import threading
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -27,7 +28,8 @@ def _get_jwks(jwks_url: str) -> dict:
         return jwks
 
 
-def get_current_user_id(authorization: str = Header(None)) -> UUID:
+def get_current_user_id(authorization: str = Header(None)) -> dict:
+    """Like get_current_user_id but returns the full JWT payload."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
@@ -35,33 +37,37 @@ def get_current_user_id(authorization: str = Header(None)) -> UUID:
 
     try:
         header = jwt.get_unverified_header(token)
-        alg = header.get("alg")
-
-        if alg != "ES256":
+        if header.get("alg") != "ES256":
             raise HTTPException(status_code=401, detail="Unsupported token algorithm")
 
         if not SUPABASE_URL:
             raise HTTPException(status_code=500, detail="SUPABASE_URL is not set")
 
-        jwks_url = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
-        jwks = _get_jwks(jwks_url)
-
+        jwks = _get_jwks(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
         payload = jwt.decode(
-            token,
-            jwks,
-            algorithms=["ES256"],
-            options={"verify_aud": False},
+            token, jwks, algorithms=["ES256"], options={"verify_aud": False}
         )
-
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Token missing sub claim")
-
-        return UUID(user_id)
+        return payload
 
     except HTTPException:
         raise
-    except (JWTError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid token")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def require_manager(
+    authorization: str = Header(None),) -> UUID:
+
+    user_id = get_current_user_id(authorization)
+
+    with get_db() as (conn, cur):
+        cur.execute(
+            "SELECT role FROM public.profiles WHERE id = %(user_id)s",
+            {"user_id": str(user_id)},
+        )
+        row = cur.fetchone()
+
+    if not row or row["role"] != "manager":
+        raise HTTPException(status_code=403, detail="Manager access required")
+
+    return user_id

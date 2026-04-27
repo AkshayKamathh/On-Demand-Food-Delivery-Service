@@ -21,6 +21,8 @@ type CartContextType = {
   totalWeight: number;
   deliveryFee: number;
   total: number;
+  cartError: string;
+  clearCartError: () => void;
   addToCart: (item: {
     id: number;
     name: string;
@@ -51,6 +53,19 @@ async function fetchWithTimeout(
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartError, setCartError] = useState("");
+
+  const clearCartError = () => setCartError("");
+
+  useEffect(() => {
+    if (!cartError) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setCartError("");
+    }, 4000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [cartError]);
 
   const loadCart = async () => {
     let headers: Record<string, string>;
@@ -69,11 +84,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (!res.ok) {
-        setCartItems([]);
         return;
       }
 
       const dataJson = await res.json();
+      setCartError("");
       setCartItems(
         dataJson.map((item: any) => ({
           id: item.id,
@@ -86,7 +101,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }))
       );
     } catch {
-      setCartItems([]);
+      return;
     }
   };
 
@@ -113,10 +128,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Failed to add item to cart: ${text}`);
+      const message = text || "Failed to add item to cart";
+      setCartError(message);
+      throw new Error(message);
     }
 
     const saved = await res.json();
+    setCartError("");
 
     setCartItems((prev) => {
       const existing = prev.find((x) => x.item_id === saved.item_id);
@@ -151,9 +169,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`Failed to remove cart item: ${text}`);
+        const message = text || "Failed to remove cart item";
+        setCartError(message);
+        throw new Error(message);
       }
-      setCartItems((prev) => prev.filter((x) => x.id !== id));
+      setCartError("");
+      await loadCart();
       return;
     }
 
@@ -170,13 +191,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Failed to update cart item: ${text}`);
+      const message = text || "Failed to update cart item";
+      setCartError(message);
+      throw new Error(message);
     }
 
-    const saved = await res.json();
-    setCartItems((prev) =>
-      prev.map((x) => (x.id === id ? { ...x, quantity: saved.quantity } : x))
-    );
+    await res.json();
+    setCartError("");
+    await loadCart();
   };
 
   useEffect(() => {
@@ -216,14 +238,44 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       totalWeight,
       deliveryFee,
       total,
+      cartError,
+      clearCartError,
       addToCart,
       updateQuantity,
       loadCart,
     }),
-    [cartItems, cartCount, subtotal, totalWeight, deliveryFee, total]
+    [cartItems, cartCount, subtotal, totalWeight, deliveryFee, total, cartError]
   );
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+  return (
+    <CartContext.Provider value={value}>
+      {children}
+      {cartError && (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-[70] max-w-sm">
+          <div className="pointer-events-auto rounded-xl border border-red-300/80 bg-white px-4 py-3 shadow-xl shadow-red-500/10 dark:border-red-500/40 dark:bg-zinc-900">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                  Cart update blocked
+                </p>
+                <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-200">
+                  {cartError}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={clearCartError}
+                className="rounded-md px-2 py-1 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                aria-label="Dismiss cart error"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </CartContext.Provider>
+  );
 }
 
 export function useCart() {

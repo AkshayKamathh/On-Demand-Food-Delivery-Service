@@ -53,6 +53,11 @@ class OrderDeliveredResponse(BaseModel):
     delivered_at: datetime
 
 
+class OrderCancelResponse(BaseModel):
+    order_id: int
+    status: str
+
+
 VALID_ORDER_STATUSES = {
     "pending_payment",
     "submitted",

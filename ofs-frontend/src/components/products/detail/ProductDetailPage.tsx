@@ -200,8 +200,8 @@ export default function ProductDetailOverlay({
                           weight: String(product.weight),
                           image: product.image_url,
                         });
-                      } catch (err) {
-                        console.error("Failed to add to cart:", err);
+                      } catch {
+                        // CartProvider surfaces handled cart errors in-app.
                       } finally {
                         setAdding(false);
                       }
