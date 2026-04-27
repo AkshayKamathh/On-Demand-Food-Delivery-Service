@@ -8,6 +8,7 @@ from db import get_db
 from schemas.sales import (
     CategoryBreakdownItem,
     MonthlyRevenuePoint,
+    ProductSalesItem,
     SalesStats,
     SalesSummaryResponse,
     TopProductItem,
@@ -167,3 +168,39 @@ def get_sales_summary(year: int = Query(default_factory=lambda: datetime.now().y
         category_breakdown=category_breakdown,
         top_products=top_products,
     )
+
+
+@router.get("/products", response_model=List[ProductSalesItem])
+def get_product_sales(year: int = Query(default_factory=lambda: datetime.now().year)):
+    """All products with paid sales in the given year, ranked by units then revenue."""
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT
+              oi.item_id,
+              MAX(oi.description) AS name,
+              MAX(i.category_id) AS category_id,
+              COALESCE(SUM(oi.quantity), 0) AS units,
+              COALESCE(SUM(oi.line_total), 0) AS revenue
+            FROM public.order_items oi
+            JOIN public.orders o ON o.id = oi.order_id
+            LEFT JOIN public.items i ON i.item_id = oi.item_id
+            WHERE o.payment_status = 'paid'
+              AND EXTRACT(YEAR FROM COALESCE(o.paid_at, o.created_at)) = %(year)s
+            GROUP BY oi.item_id
+            ORDER BY units DESC, revenue DESC
+            """,
+            {"year": year},
+        )
+        rows = cur.fetchall()
+
+    return [
+        ProductSalesItem(
+            name=row["name"] or f"Item #{row['item_id']}",
+            sku=str(row["item_id"]),
+            category=CATEGORY_ID_TO_NAME.get(row["category_id"], "Uncategorized"),
+            units=int(row["units"] or 0),
+            revenue=_as_float(row["revenue"]),
+        )
+        for row in rows
+    ]
