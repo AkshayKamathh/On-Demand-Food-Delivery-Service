@@ -28,7 +28,8 @@ def _get_jwks(jwks_url: str) -> dict:
         return jwks
 
 
-def _decode_token(authorization: str) -> dict:
+def get_current_user_id(authorization: str = Header(None)) -> dict:
+    """Validates the JWT and returns the full payload (works for users and managers)."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
@@ -53,25 +54,26 @@ def _decode_token(authorization: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-def get_current_user_id(authorization: str = Header(None)) -> UUID:
-    payload = _decode_token(authorization)
+def require_user(payload: dict = Depends(get_current_user_id)) -> UUID:
+    """Extracts and returns the user UUID from the JWT payload."""
     sub = payload.get("sub")
     if not sub:
-        raise HTTPException(status_code=401, detail="Token missing sub claim")
+        raise HTTPException(status_code=401, detail="Token missing subject claim")
     try:
         return UUID(sub)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid sub claim")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid user ID in token")
 
 
-def get_current_jwt_payload(authorization: str = Header(None)) -> dict:
-    return _decode_token(authorization)
-
-
-def require_manager(
-    authorization: str = Header(None),) -> UUID:
-
-    user_id = get_current_user_id(authorization)
+def require_manager(payload: dict = Depends(get_current_user_id)) -> UUID:
+    """Ensures the token belongs to a manager and returns their UUID."""
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Token missing subject claim")
+    try:
+        user_id = UUID(sub)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid user ID in token")
 
     with get_db() as (conn, cur):
         cur.execute(

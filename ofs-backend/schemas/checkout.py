@@ -63,3 +63,11 @@ class OrderConfirmationResponse(BaseModel):
     status: str
     payment_status: str
     total: float
+
+
+class LastOrderAddressResponse(BaseModel):
+    recipient_name: str
+    delivery_address: str
+    delivery_address_latitude: float
+    delivery_address_longitude: float
+    delivery_notes: Optional[str] = None

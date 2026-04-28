@@ -12,9 +12,9 @@ const features = [
       "Track your driving robot in real time, from OFS Grocery to your doorstep.",
   },
   {
-    title: "No delivery fee on orders over 25lbs",
+    title: "No delivery fees on orders under 20 lbs",
     description:
-      "Great deal for families buying in bulk or weekly shopping.",
+      "Great deal for quick groceries and snacks.",
   },
 ];
 

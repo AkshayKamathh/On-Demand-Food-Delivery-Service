@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional
+from psycopg.errors import ForeignKeyViolation
 from db import get_db
 from schemas.inventory import InventoryItem, InventoryUpdate, InventoryCreate
 
@@ -38,7 +39,7 @@ def list_inventory():
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT item_id, description, category_id, price, weight, stock
+            SELECT item_id, description, category_id, price, weight, stock, is_active, image_url
             FROM public.items
             ORDER BY item_id
             """
@@ -59,6 +60,7 @@ def list_inventory():
                 weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
                 stock=stock,
                 status=status_from_stock(stock),
+                is_active=bool(r["is_active"]),
             )
         )
     return items
@@ -71,7 +73,7 @@ def get_inventory_item(sku: str):
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT item_id, description, category_id, price, weight, stock
+            SELECT item_id, description, category_id, price, weight, stock, is_active, image_url
             FROM public.items
             WHERE item_id = %(item_id)s
             """,
@@ -93,6 +95,8 @@ def get_inventory_item(sku: str):
         weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
         stock=stock,
         status=status_from_stock(stock),
+        image_url=r["image_url"],
+        is_active=bool(r["is_active"]),
     )
 
 #PATCH /inventory/{sku}
@@ -116,6 +120,14 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
     if "stock" in data and data["stock"] is not None:
         set_clauses.append("stock = %(stock)s")
         params["stock"] = data["stock"]
+    
+    if "is_active" in data and data["is_active"] is not None:
+        set_clauses.append("is_active = %(is_active)s")
+        params["is_active"] = data["is_active"]
+
+    if "image_url" in data:
+        set_clauses.append("image_url = %(image_url)s")
+        params["image_url"] = data["image_url"]
 
     # Optional: allow updating category if your payload includes it and you want to support it later.
     # If your InventoryUpdate schema does not have category_id, ignore this.
@@ -124,7 +136,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         params["category_id"] = data["category_id"]
 
     if not set_clauses:
-        raise HTTPException(status_code=400, detail="No updatable fields provided (price/stock)")
+        raise HTTPException(status_code=400, detail="No updatable fields provided")
 
     with get_db() as (conn, cur):
         cur.execute(
@@ -132,7 +144,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
             UPDATE public.items
             SET {", ".join(set_clauses)}
             WHERE item_id = %(item_id)s
-            RETURNING item_id, description, category_id, price, weight, stock
+            RETURNING item_id, description, category_id, price, weight, stock, is_active, image_url
             """,
             params,
         )
@@ -152,16 +164,22 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
         stock=stock,
         status=status_from_stock(stock),
+        image_url=r["image_url"],
     )
 
-#DELETE /inventory/{sku}
+# DELETE /inventory/{sku}  — was hard delete, now soft delete
 @router.delete("/{sku}")
 def delete_inventory_item(sku: str):
     item_id = parse_item_id(sku)
 
     with get_db() as (conn, cur):
         cur.execute(
-            "DELETE FROM public.items WHERE item_id = %(item_id)s RETURNING item_id",
+            """
+            UPDATE public.items
+            SET is_active = false
+            WHERE item_id = %(item_id)s
+            RETURNING item_id, description, category_id, price, weight, stock, is_active
+            """,
             {"item_id": item_id},
         )
         r = cur.fetchone()
@@ -169,7 +187,18 @@ def delete_inventory_item(sku: str):
             raise HTTPException(status_code=404, detail="Item not found")
         conn.commit()
 
-    return {"deleted": str(item_id)}
+    stock = int(r["stock"]) if r["stock"] is not None else 0
+    category_name = CATEGORY_ID_TO_NAME.get(r["category_id"], "Uncategorized")
+    return InventoryItem(
+        sku=str(r["item_id"]),
+        name=r["description"],
+        category=category_name,
+        price=float(r["price"]) if r["price"] is not None else 0.0,
+        weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
+        stock=stock,
+        status=status_from_stock(stock),
+        is_active=False,
+    )
 
 #POST /inventory
 @router.post("/", response_model=InventoryItem, status_code=201)
@@ -186,7 +215,7 @@ def create_inventory_item(payload: InventoryCreate):
             """
             INSERT INTO public.items (description, category_id, price, weight, stock, image_url)
             VALUES (%(desc)s, %(category_id)s, %(price)s, %(weight)s, %(stock)s, %(image_url)s)
-            RETURNING item_id, description, category_id, price, weight, stock
+            RETURNING item_id, description, category_id, price, weight, stock, is_active, image_url
             """,
             {
                 "desc": payload.name,
@@ -194,7 +223,7 @@ def create_inventory_item(payload: InventoryCreate):
                 "price": payload.price,
                 "weight": payload.weight_lb,
                 "stock": payload.stock,
-                "image_url": None,
+                "image_url": payload.image_url,
             },
         )
         r = cur.fetchone()
@@ -211,4 +240,6 @@ def create_inventory_item(payload: InventoryCreate):
         weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
         stock=stock,
         status=status_from_stock(stock),
+        is_active=bool(r["is_active"]),
+        image_url=r["image_url"],
     )

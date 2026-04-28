@@ -26,7 +26,8 @@ def list_products(
         """
         params = {}
         clauses = []
-
+        
+        clauses.append("is_active = true")
         if category_id is not None:
             clauses.append("category_id = %(category_id)s")
             params["category_id"] = category_id
@@ -74,7 +75,7 @@ def get_product(item_id: int):
           FROM public.items i
           LEFT JOIN public.item_details d
             ON d.item_id = i.item_id
-          WHERE i.item_id = %(item_id)s
+          WHERE i.item_id = %(item_id)s AND i.is_active = true
         """
         cur.execute(sql, {"item_id": item_id})
         row = cur.fetchone()

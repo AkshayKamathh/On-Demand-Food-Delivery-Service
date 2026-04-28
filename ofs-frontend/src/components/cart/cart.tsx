@@ -207,17 +207,20 @@ export default function Cart({ isOpen, onClose }: CartProps) {
               {totalWeight.toFixed(1)} lbs
             </span>
           </div>
-
-          <div
-            className={`flex justify-between text-sm ${
-              totalWeight <= 20
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-zinc-600 dark:text-zinc-300"
-            }`}
-          >
-            <span>Delivery Fee:</span>
+          
+          <div className={`flex justify-between text-sm ${
+            totalWeight < 20 
+              ? "text-emerald-600 dark:text-emerald-400" 
+              : "text-zinc-600 dark:text-zinc-300"
+          }`}>
             <span>
-              {totalWeight <= 20 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
+              Delivery Fee ({totalWeight.toFixed(1)} lbs):{" "}
+              <span className={totalWeight >= 20 ? "line-through" : ""}>
+                ${deliveryFee.toFixed(2)}
+              </span>
+            </span>
+            <span>
+              {totalWeight < 20 ? "FREE" : `$${deliveryFee.toFixed(2)}`}
             </span>
           </div>
 
