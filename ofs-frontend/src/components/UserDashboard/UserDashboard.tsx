@@ -141,6 +141,28 @@ export default function DashboardPage() {
     setSelectedFilters(filters);
   };
 
+  const reloadProducts = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/catalog/products");
+      if (!res.ok) return;
+      const data: ApiProduct[] = await res.json();
+      setProducts(
+        data.map((p) => ({
+          id: p.item_id,
+          name: p.description ?? "Unnamed Product",
+          category: categoryNames[p.category_id ?? 0] ?? "General",
+          price: p.price ?? 0,
+          unit: "/lb",
+          weight: p.weight ? `${p.weight.toFixed(1)} lb` : "1 lb",
+          inStock: p.stock ?? 0,
+          imageUrl: p.image_url ?? null,
+        }))
+      );
+    } catch {
+      // best-effort refresh
+    }
+  };
+
   const handleAddToCart = async (product: Product) => {
     if (addingItemId !== null) return;
 
@@ -155,7 +177,7 @@ export default function DashboardPage() {
         image: product.imageUrl ?? null,
       });
     } catch {
-      // CartProvider surfaces handled cart errors in-app.
+      await reloadProducts();
     } finally {
       setAddingItemId(null);
     }
@@ -242,15 +264,21 @@ export default function DashboardPage() {
                       </span>
                     </span>
                     <span>
-                      In stock:{" "}
-                      <span
-                        className={cn(
-                          "font-medium",
-                          product.inStock > 10 ? "text-emerald-600" : "text-amber-500"
-                        )}
-                      >
-                        {product.inStock}
-                      </span>
+                      {product.inStock > 0 ? (
+                        <>
+                          In stock:{" "}
+                          <span
+                            className={cn(
+                              "font-medium",
+                              product.inStock > 10 ? "text-emerald-600" : "text-amber-500"
+                            )}
+                          >
+                            {product.inStock}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-medium text-red-500">Out of stock</span>
+                      )}
                     </span>
                   </div>
 
@@ -272,10 +300,14 @@ export default function DashboardPage() {
 
                       <button
                         onClick={() => handleAddToCart(product)}
-                        disabled={addingItemId === product.id}
+                        disabled={addingItemId === product.id || product.inStock <= 0}
                         className="inline-flex items-center justify-center rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 text-xs font-semibold text-white shadow-md active:scale-[0.97] transition-all"
                       >
-                        {addingItemId === product.id ? "Adding..." : "Add"}
+                        {product.inStock <= 0
+                          ? "Sold out"
+                          : addingItemId === product.id
+                            ? "Adding..."
+                            : "Add"}
                       </button>
                     </div>
                   </div>

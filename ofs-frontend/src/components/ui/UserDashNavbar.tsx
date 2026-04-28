@@ -9,7 +9,7 @@ import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 import Cart from "@/components/cart/cart";
 
 export default function DashboardNavbar() {
-  const { cartCount } = useCart();
+  const { cartCount, isCartReady } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
 
   return (
@@ -62,7 +62,7 @@ export default function DashboardNavbar() {
             className="relative p-2 text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
           >
             <ShoppingCart className="h-5 w-5" />
-            {cartCount > 0 && (
+            {isCartReady && cartCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
                 {cartCount}
               </span>

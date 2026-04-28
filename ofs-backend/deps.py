@@ -44,10 +44,9 @@ def get_current_user_id(authorization: str = Header(None)) -> dict:
             raise HTTPException(status_code=500, detail="SUPABASE_URL is not set")
 
         jwks = _get_jwks(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
-        payload = jwt.decode(
+        return jwt.decode(
             token, jwks, algorithms=["ES256"], options={"verify_aud": False}
         )
-        return payload
 
     except HTTPException:
         raise

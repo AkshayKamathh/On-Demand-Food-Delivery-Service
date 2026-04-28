@@ -26,6 +26,11 @@ export default function RootLayout({
           href="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css"
           rel="stylesheet"
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className={geistSans.variable}>
         <ThemeProvider>
