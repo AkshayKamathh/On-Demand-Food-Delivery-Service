@@ -28,8 +28,7 @@ def _get_jwks(jwks_url: str) -> dict:
         return jwks
 
 
-def get_current_user_id(authorization: str = Header(None)) -> dict:
-    """Like get_current_user_id but returns the full JWT payload."""
+def _decode_token(authorization: str) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
@@ -44,15 +43,29 @@ def get_current_user_id(authorization: str = Header(None)) -> dict:
             raise HTTPException(status_code=500, detail="SUPABASE_URL is not set")
 
         jwks = _get_jwks(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
-        payload = jwt.decode(
+        return jwt.decode(
             token, jwks, algorithms=["ES256"], options={"verify_aud": False}
         )
-        return payload
 
     except HTTPException:
         raise
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def get_current_user_id(authorization: str = Header(None)) -> UUID:
+    payload = _decode_token(authorization)
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Token missing sub claim")
+    try:
+        return UUID(sub)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid sub claim")
+
+
+def get_current_jwt_payload(authorization: str = Header(None)) -> dict:
+    return _decode_token(authorization)
 
 
 def require_manager(

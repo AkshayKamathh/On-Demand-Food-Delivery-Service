@@ -74,6 +74,119 @@ def delivery_fee_for_weight(total_weight: Decimal) -> Decimal:
     return Decimal("0.00") if total_weight <= Decimal("20") else Decimal("10.00")
 
 
+ORDER_RESERVATION_TIMEOUT_MINUTES = 30
+
+
+def reserve_stock_for_order(
+    cur, line_items: List[Dict[str, Any]]
+) -> None:
+    """
+    Atomically decrement public.items.stock for each line. Items are processed
+    in item_id order so concurrent reservations cannot deadlock. Raises 409 if
+    any line cannot be satisfied; the caller's transaction must be rolled back
+    via HTTPException propagation so no partial reservation persists.
+    """
+    sorted_items = sorted(line_items, key=lambda x: int(x["item_id"]))
+    for item in sorted_items:
+        item_id = int(item["item_id"])
+        quantity = int(item["quantity"])
+        if quantity <= 0:
+            raise HTTPException(status_code=400, detail="Invalid order quantity")
+
+        cur.execute(
+            """
+            UPDATE public.items
+            SET stock = stock - %(q)s
+            WHERE item_id = %(item_id)s AND stock >= %(q)s
+            RETURNING item_id
+            """,
+            {"q": quantity, "item_id": item_id},
+        )
+        if cur.rowcount != 1:
+            cur.execute(
+                "SELECT description FROM public.items WHERE item_id = %(item_id)s",
+                {"item_id": item_id},
+            )
+            row = cur.fetchone()
+            name = row["description"] if row else f"item #{item_id}"
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"'{name}' just sold out while you were checking out. "
+                    "Please review your cart and try again."
+                ),
+            )
+
+
+def release_order_reservation(cur, order_id: int) -> bool:
+    """
+    Return reserved stock for a pending_payment order to inventory and mark
+    the order cancelled. Idempotent: returns True only on the transition that
+    actually freed stock, False otherwise.
+    """
+    cur.execute(
+        """
+        SELECT id, status
+        FROM public.orders
+        WHERE id = %(order_id)s
+        FOR UPDATE
+        """,
+        {"order_id": order_id},
+    )
+    order = cur.fetchone()
+    if not order or order["status"] != "pending_payment":
+        return False
+
+    cur.execute(
+        """
+        SELECT item_id, quantity
+        FROM public.order_items
+        WHERE order_id = %(order_id)s
+        ORDER BY item_id
+        """,
+        {"order_id": order_id},
+    )
+    for item in cur.fetchall():
+        cur.execute(
+            """
+            UPDATE public.items
+            SET stock = stock + %(q)s
+            WHERE item_id = %(item_id)s
+            """,
+            {"q": int(item["quantity"]), "item_id": int(item["item_id"])},
+        )
+
+    cur.execute(
+        """
+        UPDATE public.orders
+        SET status = 'cancelled', updated_at = now()
+        WHERE id = %(order_id)s
+        """,
+        {"order_id": order_id},
+    )
+    return True
+
+
+def sweep_stale_reservations(cur) -> None:
+    """
+    Release stock from any pending_payment orders older than the Stripe session
+    timeout. SKIP LOCKED prevents this sweep from blocking on rows another
+    request is already releasing.
+    """
+    cur.execute(
+        f"""
+        SELECT id
+        FROM public.orders
+        WHERE status = 'pending_payment'
+          AND created_at < now() - interval '{ORDER_RESERVATION_TIMEOUT_MINUTES} minutes'
+        ORDER BY id
+        FOR UPDATE SKIP LOCKED
+        """
+    )
+    for row in cur.fetchall():
+        release_order_reservation(cur, int(row["id"]))
+
+
 def serialize_decimal(value: Decimal) -> float:
     return float(as_money(value))
 
@@ -350,8 +463,18 @@ def create_checkout_session(
         raise HTTPException(status_code=502, detail="Mapbox address validation failed")
 
     with get_db() as (conn, cur):
+        sweep_stale_reservations(cur)
+
         cart_rows = load_cart_snapshot(cur, user_id)
         summary = build_checkout_summary(cart_rows)
+
+        reserve_stock_for_order(
+            cur,
+            [
+                {"item_id": item.item_id, "quantity": item.quantity}
+                for item in summary.items
+            ],
+        )
 
         cur.execute(
             """
@@ -513,6 +636,7 @@ def confirm_checkout(
             SELECT id, status, payment_status, total, stripe_checkout_session_id
             FROM public.orders
             WHERE id = %(order_id)s AND user_id = %(user_id)s
+            FOR UPDATE
             """,
             {
                 "order_id": payload.order_id,
@@ -538,46 +662,50 @@ def confirm_checkout(
         if session.payment_status != "paid" or session.status != "complete":
             raise HTTPException(status_code=409, detail="Payment has not completed")
 
-        cur.execute(
-            """
-            SELECT item_id, quantity
-            FROM public.order_items
-            WHERE order_id = %(order_id)s
-            ORDER BY id
-            """,
-            {"order_id": payload.order_id},
-        )
-        order_items = cur.fetchall()
-
-        for item in order_items:
-            cur.execute(
-                """
-                SELECT stock
-                FROM public.items
-                WHERE item_id = %(item_id)s
-                FOR UPDATE
-                """,
-                {"item_id": item["item_id"]},
-            )
-            inventory_row = cur.fetchone()
-            if not inventory_row:
-                raise HTTPException(status_code=409, detail="An ordered item no longer exists")
-
-            stock = int(inventory_row["stock"] or 0)
-            if stock < int(item["quantity"]):
-                raise HTTPException(status_code=409, detail="Inventory changed before order confirmation")
+        if order["status"] != "pending_payment":
+            # The reservation sweep (or an explicit release) already returned
+            # this order's stock to inventory. Stripe has the customer's money;
+            # attempt an automatic refund and surface a clear error so they
+            # don't think payment silently succeeded.
+            payment_intent_id = session.payment_intent
+            refund_attempted = False
+            if payment_intent_id:
+                try:
+                    stripe.Refund.create(payment_intent=payment_intent_id)
+                    refund_attempted = True
+                except stripe.error.StripeError as exc:
+                    print(
+                        f"Failed to auto-refund expired order {payload.order_id}: {exc}"
+                    )
 
             cur.execute(
                 """
-                UPDATE public.items
-                SET stock = stock - %(quantity)s
-                WHERE item_id = %(item_id)s
+                UPDATE public.orders
+                SET payment_status = %(payment_status)s,
+                    stripe_payment_intent_id = %(payment_intent_id)s,
+                    updated_at = now()
+                WHERE id = %(order_id)s
                 """,
                 {
-                    "quantity": int(item["quantity"]),
-                    "item_id": item["item_id"],
+                    "payment_status": "refunded" if refund_attempted else "paid_unfulfillable",
+                    "payment_intent_id": payment_intent_id,
+                    "order_id": payload.order_id,
                 },
             )
+            conn.commit()
+
+            if refund_attempted:
+                detail = (
+                    "Your checkout session expired before payment was confirmed, "
+                    "so the items were released back to inventory. We've started "
+                    "a refund — please allow a few business days for it to appear."
+                )
+            else:
+                detail = (
+                    "Your checkout session expired before payment was confirmed. "
+                    "Please contact support — your payment will be refunded manually."
+                )
+            raise HTTPException(status_code=409, detail=detail)
 
         cur.execute(
             """
@@ -749,6 +877,35 @@ def get_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
         trip_total_stops=int(trip_total_stops) if trip_total_stops is not None else None,
         trip_status=trip_status,
         trip_current_stop=int(trip_current_stop) if trip_current_stop is not None else None,
+    )
+
+
+@router.post("/orders/{order_id}/release", response_model=OrderCancelResponse)
+def release_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+    """
+    Release reserved stock for an unpaid order. Called by the frontend when
+    Stripe checkout is cancelled so other shoppers can buy the held items
+    immediately rather than waiting for the 30-minute sweep.
+    """
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, status
+            FROM public.orders
+            WHERE id = %(order_id)s AND user_id = %(user_id)s
+            """,
+            {"order_id": order_id, "user_id": str(user_id)},
+        )
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        released = release_order_reservation(cur, order_id)
+        conn.commit()
+
+    return OrderCancelResponse(
+        order_id=order_id,
+        status="cancelled" if released else order["status"],
     )
 
 

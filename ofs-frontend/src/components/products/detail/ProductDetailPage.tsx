@@ -15,6 +15,7 @@ type Product = {
   description: string;
   price: number;
   weight: number;
+  stock: number;
   image_url: string | null;
 };
 
@@ -184,11 +185,15 @@ export default function ProductDetailOverlay({
                   <div className={price}>${product.price.toFixed(2)}</div>
                 </div>
 
+                {product.stock <= 0 && (
+                  <p className="text-sm font-medium text-red-500">Out of stock</p>
+                )}
+
                 <div className="mt-auto">
                   <button
                     type="button"
                     className={buttonClasses}
-                    disabled={adding}
+                    disabled={adding || product.stock <= 0}
                     onClick={async () => {
                       if (adding) return;
                       setAdding(true);
@@ -207,7 +212,11 @@ export default function ProductDetailOverlay({
                       }
                     }}
                   >
-                    {adding ? "Adding…" : "Add to cart"}
+                    {product.stock <= 0
+                      ? "Sold out"
+                      : adding
+                        ? "Adding…"
+                        : "Add to cart"}
                   </button>
                 </div>
               </div>

@@ -133,6 +133,19 @@ export default function CheckoutPage() {
     const sessionId = searchParams.get("session_id");
 
     if (status === "cancelled") {
+      const cancelledOrderId = searchParams.get("order_id");
+      if (cancelledOrderId) {
+        (async () => {
+          try {
+            await fetch(`${API_BASE_URL}/checkout/orders/${cancelledOrderId}/release`, {
+              method: "POST",
+              headers: await getAuthHeaders(),
+            });
+          } catch {
+            // Best-effort; the 30-min sweep will clean up regardless.
+          }
+        })();
+      }
       setCheckoutError("Stripe checkout was cancelled. Your cart has not been submitted.");
       return;
     }
