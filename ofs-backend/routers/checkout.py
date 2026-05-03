@@ -918,7 +918,7 @@ def get_order(order_id: int, user_id: UUID = Depends(require_user)):
 
 
 @router.post("/orders/{order_id}/release", response_model=OrderCancelResponse)
-def release_order(order_id: int, user_id: UUID = Depends(get_current_user_id)):
+def release_order(order_id: int, user_id: UUID = Depends(require_user)):
     """
     Release reserved stock for an unpaid order. Called by the frontend when
     Stripe checkout is cancelled so other shoppers can buy the held items
