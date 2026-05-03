@@ -22,3 +22,6 @@ BEGIN
             CHECK (quantity > 0);
     END IF;
 END $$;
+
+ALTER TABLE cart_items
+ADD CONSTRAINT cart_items_user_id_item_id_key UNIQUE (user_id, item_id);

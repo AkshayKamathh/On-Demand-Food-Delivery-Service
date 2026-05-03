@@ -23,3 +23,7 @@ CREATE POLICY "Managers can manage robots" ON public.robots
 -- delivery trip
 CREATE POLICY "Managers can manage all delivery trips" ON public.delivery_trips
   FOR ALL USING (is_manager());
+
+CREATE POLICY "Users can read own profile"
+ON profiles FOR SELECT
+USING (auth.uid() = id);
