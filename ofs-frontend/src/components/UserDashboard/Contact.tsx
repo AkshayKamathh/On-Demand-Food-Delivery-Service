@@ -1,4 +1,51 @@
+"use client";
+
+import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+
+type Status = "idle" | "loading" | "success" | "error";
+
 export default function ContactPage() {
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleSend = async () => {
+    setStatus("loading");
+    setErrorMsg("");
+
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) throw new Error("You must be logged in to send a message.");
+
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("email, username")
+        .eq("id", userData.user.id)
+        .single();
+
+      if (profileError) throw new Error("Could not fetch your profile.");
+
+      const { error: insertError } = await supabase.from("contact_inquiries").insert({
+        user_id: userData.user.id,
+        sender_email: profileData.email ?? userData.user.email ?? "",
+        sender_username: profileData.username ?? null,
+        subject,
+        message,
+      });
+
+      if (insertError) throw new Error(insertError.message);
+
+      setStatus("success");
+      setSubject("");
+      setMessage("");
+    } catch (err: any) {
+      setStatus("error");
+      setErrorMsg(err?.message ?? "Something went wrong. Please try again.");
+    }
+  };
+
   return (
     <main className="animate-fade-slide-up delay-100 min-h-screen pt-10 bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 text-zinc-900 dark:text-violet-50">
       <div className="mx-auto w-full max-w-4xl bg-white/80 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/50 backdrop-blur-sm rounded-2xl p-8 shadow-xl shadow-black/10 dark:shadow-black/30">
@@ -26,19 +73,32 @@ export default function ContactPage() {
             <div className="mt-3 space-y-3">
               <input
                 className="w-full px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-transparent text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500"
-                placeholder="Your email"
-              />
-              <input
-                className="w-full px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-transparent text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500"
                 placeholder="Subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
               />
               <textarea
                 className="w-full min-h-[120px] px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-transparent text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500"
                 placeholder="How can we help?"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
               />
-              <button className="w-full px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium">
-                Send
+              <button
+                onClick={handleSend}
+                disabled={status === "loading" || !subject.trim() || !message.trim()}
+                className="w-full px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {status === "loading" ? "Sending..." : "Send"}
               </button>
+
+              {status === "success" && (
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                  Message sent! We&apos;ll get back to you soon.
+                </p>
+              )}
+              {status === "error" && (
+                <p className="text-sm text-red-600 dark:text-red-400">{errorMsg}</p>
+              )}
             </div>
           </section>
         </div>

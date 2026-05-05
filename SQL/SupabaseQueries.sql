@@ -386,3 +386,38 @@ INSERT INTO public.robots (name, status) VALUES
   ('Robot 1', 'idle'),
   ('Robot 2', 'idle')
 ON CONFLICT (name) DO NOTHING;
+
+
+-- ============================================================
+-- CONTACT INQUIRIES
+-- ============================================================
+CREATE TABLE public.contact_inquiries (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  sender_email text NOT NULL,
+  sender_username text,
+  subject text NOT NULL,
+  message text NOT NULL,
+  is_read boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT contact_inquiries_pkey PRIMARY KEY (id),
+  CONSTRAINT contact_inquiries_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+
+ALTER TABLE public.contact_inquiries ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can insert own inquiry"
+  ON public.contact_inquiries FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Managers can view all inquiries"
+  ON public.contact_inquiries FOR SELECT
+  USING (is_manager());
+
+CREATE POLICY "Managers can update any inquiry"
+  ON public.contact_inquiries FOR UPDATE
+  USING (is_manager());
+
+CREATE POLICY "Managers can delete any inquiry"
+  ON public.contact_inquiries FOR DELETE
+  USING (is_manager());
