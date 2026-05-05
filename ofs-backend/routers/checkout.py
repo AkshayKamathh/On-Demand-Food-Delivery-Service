@@ -204,7 +204,7 @@ def mapbox_forward_geocode(address: str, *, autocomplete: bool, limit: int) -> L
             "country": "us",
             "limit": limit,
             "autocomplete": "true" if autocomplete else "false",
-            "types": "address,place,postcode",
+            "types": "address",
         },
         timeout=10,
     )
@@ -219,6 +219,23 @@ def validate_delivery_address(address: str) -> ValidatedAddress:
         raise HTTPException(status_code=400, detail="Unable to validate delivery address")
 
     feature = features[0]
+    # Ensure the match is street-level, not a city or zip
+    place_types = feature.get("place_type", [])
+    if "address" not in place_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Please enter a full street address (e.g. 123 Main St, San Jose, CA 95110)",
+        )
+
+    # Check that the result includes a street number (address text typically starts with one)
+    address_text = feature.get("address")  # this is the house number in Mapbox responses
+    if not address_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Address appears to be missing a street number. Please include a full street address.",
+        )
+
+        
     center = feature.get("center") or [None, None]
    
     if not center or len(center) < 2:
@@ -226,7 +243,6 @@ def validate_delivery_address(address: str) -> ValidatedAddress:
 
     longitude, latitude = center[0], center[1]
 
-    
     if longitude is None or latitude is None:
         raise HTTPException(status_code=400, detail="Validated address is missing coordinates")
 
