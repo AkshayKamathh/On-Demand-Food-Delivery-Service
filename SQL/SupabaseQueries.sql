@@ -296,6 +296,88 @@ ON CONFLICT (item_id) DO NOTHING;
 
 SELECT setval(pg_get_serial_sequence('public.items', 'item_id'), 26);
 
+-- Item Details
+INSERT INTO public.item_details (item_id, long_description, nutrition, extra)
+VALUES
+  (
+    13,
+    'Crisp, hand-picked organic apples grown without synthetic pesticides or fertilizers. Perfect for snacking, baking, or adding to salads.',
+    '{"serving_size":"1 medium apple (182g)","calories":95,"total_fat_g":0.3,"saturated_fat_g":0,"cholesterol_mg":0,"sodium_mg":2,"total_carbs_g":25,"dietary_fiber_g":4.4,"sugars_g":19,"protein_g":0.5,"vitamin_c_mg":8.4,"potassium_mg":195}'::jsonb,
+    '{"storage":"Refrigerate for up to 4 weeks","origin":"USA","organic":true}'::jsonb
+  ),
+  (
+    14,
+    'Vine-ripened fresh tomatoes bursting with flavor. Great for salads, sandwiches, sauces, or slicing.',
+    '{"serving_size":"1 medium tomato (123g)","calories":22,"total_fat_g":0.2,"saturated_fat_g":0,"cholesterol_mg":0,"sodium_mg":6,"total_carbs_g":4.8,"dietary_fiber_g":1.5,"sugars_g":3.2,"protein_g":1.1,"vitamin_c_mg":17,"potassium_mg":292}'::jsonb,
+    '{"storage":"Store at room temperature until ripe, then refrigerate","origin":"USA"}'::jsonb
+  ),
+  (
+    15,
+    'Fresh whole milk with no added hormones. Rich, creamy, and packed with essential vitamins and calcium for the whole family.',
+    '{"serving_size":"1 cup (240ml)","calories":149,"total_fat_g":8,"saturated_fat_g":4.6,"cholesterol_mg":24,"sodium_mg":105,"total_carbs_g":12,"dietary_fiber_g":0,"sugars_g":12,"protein_g":8,"calcium_mg":276,"vitamin_d_iu":124}'::jsonb,
+    '{"storage":"Keep refrigerated at or below 40°F","allergens":["milk"]}'::jsonb
+  ),
+  (
+    16,
+    'Artisan sourdough bread made with a traditional slow-fermented starter. Features a tangy flavor and chewy, open crumb with a crispy golden crust.',
+    '{"serving_size":"1 slice (64g)","calories":170,"total_fat_g":1,"saturated_fat_g":0,"cholesterol_mg":0,"sodium_mg":350,"total_carbs_g":33,"dietary_fiber_g":1.5,"sugars_g":1,"protein_g":7,"iron_mg":2.5}'::jsonb,
+    '{"storage":"Store at room temperature up to 3 days or freeze for longer","allergens":["wheat"]}'::jsonb
+  ),
+  (
+    17,
+    'Creamy Hass avocados, perfect for guacamole, toast, salads, or smoothies. Packed with healthy monounsaturated fats.',
+    '{"serving_size":"1/3 medium avocado (50g)","calories":80,"total_fat_g":7,"saturated_fat_g":1,"cholesterol_mg":0,"sodium_mg":0,"total_carbs_g":4,"dietary_fiber_g":3,"sugars_g":0.3,"protein_g":1,"potassium_mg":250}'::jsonb,
+    '{"storage":"Ripen at room temperature, refrigerate once ripe","origin":"Mexico"}'::jsonb
+  ),
+  (
+    18,
+    'Sweet, naturally portioned bananas. A convenient on-the-go snack loaded with potassium and natural energy.',
+    '{"serving_size":"1 medium banana (118g)","calories":105,"total_fat_g":0.4,"saturated_fat_g":0.1,"cholesterol_mg":0,"sodium_mg":1,"total_carbs_g":27,"dietary_fiber_g":3.1,"sugars_g":14,"protein_g":1.3,"potassium_mg":422,"vitamin_b6_mg":0.4}'::jsonb,
+    '{"storage":"Store at room temperature; refrigerate to slow ripening","origin":"Guatemala"}'::jsonb
+  ),
+  (
+    19,
+    'Crisp, fresh romaine lettuce with long sturdy leaves. Ideal for Caesar salads, wraps, and sandwiches.',
+    '{"serving_size":"1 cup shredded (47g)","calories":8,"total_fat_g":0.1,"saturated_fat_g":0,"cholesterol_mg":0,"sodium_mg":4,"total_carbs_g":1.5,"dietary_fiber_g":1,"sugars_g":0.6,"protein_g":0.6,"vitamin_a_iu":4094,"vitamin_k_mcg":48.2}'::jsonb,
+    '{"storage":"Refrigerate unwashed in a plastic bag for up to 7 days","origin":"USA"}'::jsonb
+  ),
+  (
+    20,
+    'Thick, creamy Greek yogurt made by straining out excess whey. High in protein and probiotics for a healthy gut.',
+    '{"serving_size":"1 container (170g)","calories":100,"total_fat_g":0.7,"saturated_fat_g":0.5,"cholesterol_mg":10,"sodium_mg":60,"total_carbs_g":6,"dietary_fiber_g":0,"sugars_g":6,"protein_g":17,"calcium_mg":187}'::jsonb,
+    '{"storage":"Keep refrigerated; consume by date on package","allergens":["milk"]}'::jsonb
+  ),
+  (
+    21,
+    'One dozen large eggs from cage-free hens. Versatile kitchen staple for breakfast, baking, and cooking.',
+    '{"serving_size":"1 large egg (50g)","calories":70,"total_fat_g":5,"saturated_fat_g":1.5,"cholesterol_mg":185,"sodium_mg":70,"total_carbs_g":0,"dietary_fiber_g":0,"sugars_g":0,"protein_g":6,"vitamin_d_iu":41,"choline_mg":147}'::jsonb,
+    '{"storage":"Refrigerate and use within 3 weeks of purchase","allergens":["eggs"],"count":12}'::jsonb
+  ),
+  (
+    22,
+    'Boneless, skinless chicken breast — a lean, high-protein cut perfect for grilling, baking, stir-frying, or meal prep.',
+    '{"serving_size":"4 oz raw (113g)","calories":120,"total_fat_g":2.5,"saturated_fat_g":0.5,"cholesterol_mg":70,"sodium_mg":75,"total_carbs_g":0,"dietary_fiber_g":0,"sugars_g":0,"protein_g":26,"iron_mg":0.4}'::jsonb,
+    '{"storage":"Refrigerate and use within 2 days, or freeze up to 9 months","allergens":[]}'::jsonb
+  ),
+  (
+    23,
+    'Premium Atlantic salmon fillet, rich in omega-3 fatty acids. Ideal for pan-searing, baking, or grilling.',
+    '{"serving_size":"4 oz raw (113g)","calories":180,"total_fat_g":10,"saturated_fat_g":2,"cholesterol_mg":55,"sodium_mg":50,"total_carbs_g":0,"dietary_fiber_g":0,"sugars_g":0,"protein_g":22,"omega3_mg":1800,"vitamin_d_iu":400}'::jsonb,
+    '{"storage":"Refrigerate and cook within 1-2 days, or freeze immediately","allergens":["fish"]}'::jsonb
+  ),
+  (
+    24,
+    'Freshly ground beef (80/20 lean-to-fat ratio). Perfect for burgers, tacos, meatballs, and bolognese.',
+    '{"serving_size":"4 oz raw (113g)","calories":280,"total_fat_g":22,"saturated_fat_g":8.5,"cholesterol_mg":80,"sodium_mg":75,"total_carbs_g":0,"dietary_fiber_g":0,"sugars_g":0,"protein_g":19,"iron_mg":2.4,"zinc_mg":5.3}'::jsonb,
+    '{"storage":"Refrigerate and use within 1-2 days, or freeze up to 4 months","allergens":[]}'::jsonb
+  ),
+  (
+    26,
+    'A massive, show-stopping watermelon perfect for parties, cookouts, and feeding a crowd. Sweet, juicy, and refreshing.',
+    '{"serving_size":"2 cups diced (280g)","calories":84,"total_fat_g":0.4,"saturated_fat_g":0,"cholesterol_mg":0,"sodium_mg":3,"total_carbs_g":21,"dietary_fiber_g":1.1,"sugars_g":17,"protein_g":1.7,"vitamin_c_mg":23,"lycopene_mg":12.7}'::jsonb,
+    '{"storage":"Store whole at room temperature; refrigerate after cutting","origin":"USA"}'::jsonb
+  );
+
 -- Robots
 INSERT INTO public.robots (name, status) VALUES
   ('Apollo', 'idle'),

@@ -39,6 +39,7 @@ type CartContextType = {
     price: number;
     weight: string;
     image: string | null;
+    quantity?: number;
   }) => Promise<void>;
   updateQuantity: (id: number, quantity: number) => void;
   loadCart: () => Promise<void>;
@@ -161,6 +162,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       price: number;
       weight: string;
       image: string | null;
+      quantity?: number;
     }) => {
       const headers = await getAuthHeaders();
       const res = await fetchWithTimeout(
@@ -170,7 +172,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           headers,
           body: JSON.stringify({
             item_id: item.id,
-            quantity: 1,
+            quantity: item.quantity ?? 1,
           }),
         },
         10000
