@@ -36,13 +36,23 @@ OFS is a grocery delivery web service that allows customers to sign up, browse r
 
 ---
 
+## Supabase Setup
+Create `OFS database`:
+```
+Create your database and copy your database password
+Navigate to Authentication -> Sign-in/Providers -> Disable "Confirm Email"
+At the project root navigate to SQL\SupabaseQueries.sql
+Copy this query and navigate to SQL Editor in Supabase
+Create a new Snippet, paste the query, and press run.
+```
+
 ## Environment Setup
 
 Create `ofs-backend/.env`:
 
 ```
 SUPABASE_URL=your_supabase_project_url
-SUPABASE_DB_URL=your_supabase_db_connection_string
+SUPABASE_DB_URL=postgresql://postgres_URL:[YOUR-PASSWORD]@aws-1-us-west-2.pooler.supabase.com:6543/postgres (use the transaction pooler string)
 STRIPE_SECRET_KEY=your_stripe_secret_key
 MAPBOX_ACCESS_TOKEN=your_mapbox_access_token
 FRONTEND_BASE_URL=http://localhost:3000/
@@ -59,7 +69,18 @@ NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token
 ---
 
 ## Running the Project
-
+```bash
+At root:
+npm install
+```
+```bash
+cd ofs-frontend
+npm install
+```
+```bash
+cd ofs-backend
+pip install --no-cache-dir -r requirements.txt
+```
 ```bash
 docker compose up --build
 ```
