@@ -33,7 +33,7 @@ type Product = {
 const categoryNames: Record<number, string> = {
   1: "Fruits",
   2: "Vegetables",
-  3: "Dairy",
+  3: "Dairy & Eggs",
   4: "Bakery",
   5: "Meat & Seafood",
 };
