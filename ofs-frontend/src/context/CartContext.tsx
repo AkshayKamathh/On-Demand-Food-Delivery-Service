@@ -130,23 +130,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       headers = await getAuthHeaders();
     } catch {
-      setCartItems([]);
+      // No auth — only clear if we know user is logged out
       setIsCartReady(true);
       return;
     }
-
+  
     try {
       const res = await fetchWithTimeout(CART_API_URL, { headers }, 10000);
-
+  
       if (!res.ok) {
+        // Don't wipe cart on a bad response — just mark ready
+        setIsCartReady(true);
         return;
       }
-
+  
       const dataJson = await res.json();
       setCartError("");
       setCartItems(dataJson.map((item: any) => mapServerItem(item)));
     } catch {
-      return;
+      // Network error — don't clear existing cart items
     } finally {
       setIsCartReady(true);
     }
@@ -298,25 +300,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-
-    const init = async () => {
-      await loadCart();
-    };
-
-    init().catch(console.error);
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+  
+    loadCart();
+  
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return;
-      if (session) {
-        await loadCart();
-      } else {
+  
+      // Only reload cart on actual sign-in/sign-out events,
+      // NOT on token refreshes (which also fire SIGNED_IN)
+      if (event === "SIGNED_OUT") {
         setCartItems([]);
         setIsCartReady(true);
+      } else if (event === "SIGNED_IN") {
+        // Guard: only load if cart is currently empty to avoid
+        // wiping cart during background token refresh
+        setCartItems(prev => {
+          if (prev.length === 0) {
+            loadCart();
+          }
+          return prev;
+        });
       }
     });
-
+  
     return () => {
       cancelled = true;
       subscription.unsubscribe();

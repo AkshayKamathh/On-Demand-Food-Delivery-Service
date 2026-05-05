@@ -47,7 +47,7 @@ export default function SignupForm() {
     passwordFocused || (password.length > 0 && !allMet(password));
   const passwordValid = allMet(password);
 
-  const handleSignup = async (e: React.SubmitEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -64,13 +64,11 @@ export default function SignupForm() {
     setLoading(true);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            username,
-          },
+          data: { username },
         },
       });
 
@@ -80,7 +78,21 @@ export default function SignupForm() {
         return;
       }
 
-      // User Logs in
+      // Insert username into profiles table
+      if (signUpData.user) {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .upsert({
+            id: signUpData.user.id,
+            email: email,
+            username: username,
+          });
+
+        if (profileError) {
+          console.error("Failed to save profile:", profileError.message);
+        }
+      }
+
       router.push("/login");
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong.");
@@ -94,15 +106,11 @@ export default function SignupForm() {
         <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">
           Create an account
         </h1>
-        <p className={subtitleClasses + " mt-1"}>
-          Sign up to get started
-        </p>
+        <p className={subtitleClasses + " mt-1"}>Sign up to get started</p>
       </div>
 
       {error && (
-        <div className={errorClasses + " animate-fade-slide-up"}>
-          {error}
-        </div>
+        <div className={errorClasses + " animate-fade-slide-up"}>{error}</div>
       )}
 
       <form onSubmit={handleSignup} className="flex flex-col gap-4">
@@ -205,13 +213,9 @@ export default function SignupForm() {
           </div>
         </div>
 
-        {/* Submit Button */}
+        {/* Submit */}
         <div className="animate-fade-slide-up delay-600">
-          <button
-            type="submit"
-            disabled={loading}
-            className={cn(buttonClasses)}
-          >
+          <button type="submit" disabled={loading} className={cn(buttonClasses)}>
             {loading ? "Creating account..." : "Sign up"}
           </button>
         </div>
