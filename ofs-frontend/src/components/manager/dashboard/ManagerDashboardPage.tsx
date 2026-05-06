@@ -5,6 +5,13 @@ import ManagerNavbar from "@/components/manager/ManagerNavbar";
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthHeaders } from "@/lib/authHeaders";
 
+type KpiStats = {
+  todays_sales: number;
+  orders_in_progress: number;
+  low_stock_items: number;
+  out_for_delivery: number;
+};
+
 type InventoryItem = {
   sku: string;
   name: string;
@@ -24,13 +31,7 @@ export default function ManagerDashboardPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const kpis = [
-    { label: "Today's Sales", value: "$1,284.50" },
-    { label: "Orders In Progress", value: "6" },
-    { label: "Low Stock Items", value: "4" },
-    { label: "Robot Load", value: "3 / 10 orders" },
-  ];
+  const [kpiData, setKpiData] = useState<KpiStats | null>(null);
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
@@ -232,6 +233,18 @@ export default function ManagerDashboardPage() {
     }
   }
 
+  async function loadKpis() {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${BASE_URL}/manager/kpis`, { headers });
+      if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+      const data = (await res.json()) as KpiStats;
+      setKpiData(data);
+    } catch {
+      // Non-fatal: KPI cards will show "—" if this fails
+    }
+  }
+
   async function loadInventory() {
     try {
       setLoading(true);
@@ -308,6 +321,7 @@ export default function ManagerDashboardPage() {
       setImageFile(null);
       setImageUrlInput(updated.image_url ?? "");
       setPreviewWithCleanup(updated.image_url ?? "", imagePreview, setImagePreview);
+      loadKpis();
     } catch (e: any) {
       setSaveMsg(`Update failed: ${e?.message ?? "Unknown error"}`);
     } finally {
@@ -369,6 +383,7 @@ export default function ManagerDashboardPage() {
 
   useEffect(() => {
     loadInventory();
+    loadKpis();
   }, []);
 
   return (
@@ -400,7 +415,20 @@ export default function ManagerDashboardPage() {
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {kpis.map((k) => (
+              {(kpiData
+                ? [
+                    { label: "Today's Sales",      value: `$${kpiData.todays_sales.toFixed(2)}` },
+                    { label: "Orders In Progress", value: String(kpiData.orders_in_progress) },
+                    { label: "Low Stock Items",    value: String(kpiData.low_stock_items) },
+                    { label: "Out for Delivery",   value: String(kpiData.out_for_delivery) },
+                  ]
+                : [
+                    { label: "Today's Sales",      value: "—" },
+                    { label: "Orders In Progress", value: "—" },
+                    { label: "Low Stock Items",    value: "—" },
+                    { label: "Out for Delivery",   value: "—" },
+                  ]
+              ).map((k) => (
                 <div
                   key={k.label}
                   className="rounded-2xl border border-zinc-200 bg-white/60 p-4 dark:border-zinc-700/50 dark:bg-zinc-900/30"
