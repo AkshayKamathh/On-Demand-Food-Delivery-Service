@@ -3,15 +3,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ShoppingBag, Truck, BarChart2, UserCircle } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, Truck, BarChart2, Mail, UserCircle } from "lucide-react";
 import ThemeToggleButton from "@/components/ui/ThemeToggleButton";
 
 const NAV_LINKS = [
   { href: "/manager/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/manager/orders",    label: "Orders",    icon: ShoppingBag },
   { href: "/manager/dispatch",  label: "Dispatch",  icon: Truck },
-  { href: "/manager/sales",     label: "Sales",     icon: BarChart2 },
-  { href: "/manager/account",   label: "Account",   icon: UserCircle },
+  { href: "/manager/sales",      label: "Sales",      icon: BarChart2 },
+  { href: "/manager/inquiries",  label: "Inquiries",  icon: Mail },
+  { href: "/manager/account",    label: "Account",    icon: UserCircle },
 ];
 
 export default function ManagerNavbar() {
