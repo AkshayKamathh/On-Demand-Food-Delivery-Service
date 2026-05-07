@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from db import get_db
 from schemas.orders import (
@@ -11,6 +12,41 @@ from schemas.orders import (
 )
 
 router = APIRouter(prefix="/manager", tags=["manager"])
+
+
+class KpiStats(BaseModel):
+    todays_sales: float
+    orders_in_progress: int
+    low_stock_items: int
+    out_for_delivery: int
+
+
+@router.get("/kpis", response_model=KpiStats)
+def get_kpis():
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            SELECT
+              COALESCE(SUM(CASE WHEN payment_status = 'paid'
+                                 AND paid_at::date = CURRENT_DATE
+                           THEN total ELSE 0 END), 0)      AS todays_sales,
+              COUNT(*) FILTER (WHERE status IN ('submitted','preparing'))
+                                                            AS orders_in_progress,
+              (SELECT COUNT(*) FROM public.items
+                WHERE stock > 0 AND stock <= 10 AND is_active = true)
+                                                            AS low_stock_items,
+              COUNT(*) FILTER (WHERE status = 'out_for_delivery')
+                                                            AS out_for_delivery
+            FROM public.orders
+            """
+        )
+        row = cur.fetchone()
+    return KpiStats(
+        todays_sales=float(row["todays_sales"]),
+        orders_in_progress=int(row["orders_in_progress"]),
+        low_stock_items=int(row["low_stock_items"]),
+        out_for_delivery=int(row["out_for_delivery"]),
+    )
 
 
 @router.get("/orders", response_model=List[ManagerOrderListItem])
