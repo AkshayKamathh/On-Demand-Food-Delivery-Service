@@ -2,10 +2,9 @@
 CREATE TABLE public.profiles (
   id uuid NOT NULL,
   updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
-  username text,             
+  username text,
   avatar_url text,
-  full_name text,
-  email text,                
+  email text,
   role text NOT NULL DEFAULT 'user'::text,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
@@ -161,8 +160,8 @@ BEGIN
   INSERT INTO public.profiles (id, email, username, role, updated_at)
   VALUES (
     NEW.id,
-    NEW.email,                           
-    NEW.raw_user_meta_data->>'username',          
+    NEW.email,
+    NEW.raw_user_meta_data->>'username',
     'user',
     timezone('utc'::text, now())
   )
@@ -265,6 +264,10 @@ CREATE POLICY "Users can view own order items" ON public.order_items
 CREATE POLICY "Managers can manage order items" ON public.order_items
   FOR ALL USING (is_manager());
 
+
+-- ============================================================
+-- SEED DATA
+-- ============================================================
 
 -- Categories
 INSERT INTO public.categories (category_id, description) OVERRIDING SYSTEM VALUE VALUES
@@ -421,6 +424,11 @@ CREATE POLICY "Managers can update any inquiry"
 CREATE POLICY "Managers can delete any inquiry"
   ON public.contact_inquiries FOR DELETE
   USING (is_manager());
+
+
+-- ============================================================
+-- STORAGE: Avatar upload policies
+-- ============================================================
 
 -- Allow users to upload/update their own avatar
 CREATE POLICY "Users can upload own avatar"
