@@ -421,3 +421,20 @@ CREATE POLICY "Managers can update any inquiry"
 CREATE POLICY "Managers can delete any inquiry"
   ON public.contact_inquiries FOR DELETE
   USING (is_manager());
+
+-- Allow users to upload/update their own avatar
+CREATE POLICY "Users can upload own avatar"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+CREATE POLICY "Users can update own avatar"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Allow public reads
+CREATE POLICY "Public avatar read"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'avatars');

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, Pencil, Check, X, Camera, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 type Profile = {
@@ -18,17 +18,30 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // Username edit state
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameLoading, setUsernameLoading] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSuccess, setUsernameSuccess] = useState(false);
+
+  // Avatar state
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     let cancelled = false;
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const timeout = (ms: number, message: string) =>
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms));
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(message)), ms)
+      );
 
     const loadProfile = async () => {
       try {
         setLoading(true);
-
         let user = null;
 
         for (let i = 0; i < 3; i++) {
@@ -42,9 +55,7 @@ export default function AccountPage() {
               user = data.user;
               break;
             }
-          } catch {
-            // retry a couple times
-          }
+          } catch {}
           await wait(300);
         }
 
@@ -65,18 +76,17 @@ export default function AccountPage() {
           timeout(8000, "Timed out loading profile"),
         ]);
         const { data: profileData, error: profileError } = profileResult;
-
-        if (profileError) {
-          console.error(profileError);
-        }
+        if (profileError) console.error(profileError);
 
         if (!cancelled) {
-          setProfile({
+          const p: Profile = {
             id: user.id,
             email: user.email ?? null,
             username: profileData?.username ?? null,
             avatar_url: profileData?.avatar_url ?? null,
-          });
+          };
+          setProfile(p);
+          setUsernameInput(p.username ?? "");
         }
       } catch (err) {
         console.error("Failed to load profile:", err);
@@ -85,22 +95,126 @@ export default function AccountPage() {
           router.replace("/");
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadProfile();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/");
+  };
+
+  // Username functionality
+  const startEditingUsername = () => {
+    setUsernameInput(profile?.username ?? "");
+    setUsernameError(null);
+    setUsernameSuccess(false);
+    setEditingUsername(true);
+  };
+
+  const cancelEditingUsername = () => {
+    setEditingUsername(false);
+    setUsernameError(null);
+  };
+
+  const saveUsername = async () => {
+    if (!profile) return;
+    const trimmed = usernameInput.trim();
+    if (!trimmed) {
+      setUsernameError("Username cannot be empty.");
+      return;
+    }
+    if (trimmed === profile.username) {
+      setEditingUsername(false);
+      return;
+    }
+    setUsernameLoading(true);
+    setUsernameError(null);
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ username: trimmed, updated_at: new Date().toISOString() })
+      .eq("id", profile.id);
+
+    setUsernameLoading(false);
+
+    if (error) {
+      setUsernameError(error.message ?? "Failed to save username.");
+    } else {
+      setProfile((p) => p ? { ...p, username: trimmed } : p);
+      setEditingUsername(false);
+      setUsernameSuccess(true);
+      setTimeout(() => setUsernameSuccess(false), 3000);
+    }
+  };
+
+  // Avatar functionality
+  const handleAvatarClick = () => fileInputRef.current?.click();
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!profile) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Basic validation
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Image must be under 5 MB.");
+      return;
+    }
+
+    setAvatarUploading(true);
+    setAvatarError(null);
+
+    const ext = file.name.split(".").pop();
+    const filePath = `${profile.id}/avatar.${ext}`;
+
+    // Upload to Supabase Storage bucket avatars
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      setAvatarError(uploadError.message ?? "Upload failed.");
+      setAvatarUploading(false);
+      return;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("avatars")
+      .getPublicUrl(filePath);
+
+    const publicUrl = urlData?.publicUrl;
+    if (!publicUrl) {
+      setAvatarError("Could not retrieve image URL.");
+      setAvatarUploading(false);
+      return;
+    }
+
+    // Save URL to profile
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
+      .eq("id", profile.id);
+
+    setAvatarUploading(false);
+
+    if (updateError) {
+      setAvatarError(updateError.message ?? "Failed to save avatar.");
+    } else {
+      setProfile((p) => p ? { ...p, avatar_url: publicUrl } : p);
+    }
+
+    // Reset file input
+    e.target.value = "";
   };
 
   if (loading) {
@@ -113,6 +227,11 @@ export default function AccountPage() {
 
   if (!profile) return null;
 
+  const initials =
+    profile.username?.[0]?.toUpperCase() ||
+    profile.email?.[0]?.toUpperCase() ||
+    "U";
+
   return (
     <main className="min-h-screen animate-fade-slide-up delay-200 pt-10 bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 text-zinc-900 dark:text-violet-50">
       <div className="mx-auto w-full max-w-4xl bg-white/80 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/50 backdrop-blur-sm rounded-2xl p-8 shadow-xl shadow-black/10 dark:shadow-black/30">
@@ -124,23 +243,83 @@ export default function AccountPage() {
         </div>
 
         <p className="mb-8 text-zinc-600 dark:text-zinc-300">
-          Manage your profile information and account settings. WIP
+          Manage your profile information and account settings.
         </p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* ── Account Details ── */}
           <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-6">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
               Account Details
             </h2>
-            <div className="space-y-4">
-              <div className="flex flex-col">
-                <span className="text-sm text-zinc-600 dark:text-zinc-300 mb-1">Username</span>
-                <span className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-                  {profile.username || "No username set"}
-                </span>
+            <div className="space-y-5">
+              {/* Username */}
+              <div className="flex flex-col gap-1">
+                <span className="text-sm text-zinc-600 dark:text-zinc-300">Username</span>
+
+                {editingUsername ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveUsername();
+                        if (e.key === "Escape") cancelEditingUsername();
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      autoFocus
+                      disabled={usernameLoading}
+                    />
+                    <button
+                      onClick={saveUsername}
+                      disabled={usernameLoading}
+                      className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+                      title="Save"
+                    >
+                      {usernameLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={cancelEditingUsername}
+                      disabled={usernameLoading}
+                      className="p-2 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 transition-colors"
+                      title="Cancel"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+                      {profile.username || (
+                        <span className="text-zinc-400 italic text-base">No username set</span>
+                      )}
+                    </span>
+                    <button
+                      onClick={startEditingUsername}
+                      className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-400 hover:text-emerald-600 transition-colors"
+                      title="Edit username"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    {usernameSuccess && (
+                      <span className="text-xs text-emerald-500 font-medium">Saved!</span>
+                    )}
+                  </div>
+                )}
+
+                {usernameError && (
+                  <p className="text-xs text-red-500 mt-1">{usernameError}</p>
+                )}
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm text-zinc-600 dark:text-zinc-300 mb-1">Email</span>
+
+              {/* Email (read-only) */}
+              <div className="flex flex-col gap-1">
+                <span className="text-sm text-zinc-600 dark:text-zinc-300">Email</span>
                 <span className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
                   {profile.email}
                 </span>
@@ -148,20 +327,64 @@ export default function AccountPage() {
             </div>
           </section>
 
+          {/* ── Profile Picture ── */}
           <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-6">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
               Profile Picture
             </h2>
 
             <div className="text-center mb-6">
-              <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-emerald-500 to-amber-500 flex items-center justify-center text-2xl font-bold text-white mb-3">
-                {profile.username?.[0]?.toUpperCase() ||
-                  profile.email?.[0]?.toUpperCase() ||
-                  "U"}
+              {/* Avatar */}
+              <div className="relative inline-block mb-3">
+                <div className="w-24 h-24 mx-auto rounded-full overflow-hidden bg-gradient-to-br from-emerald-500 to-amber-500 flex items-center justify-center text-2xl font-bold text-white">
+                  {profile.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={profile.avatar_url}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    initials
+                  )}
+                </div>
+
+                {/* Camera overlay button */}
+                <button
+                  onClick={handleAvatarClick}
+                  disabled={avatarUploading}
+                  className="absolute bottom-0 right-0 p-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition-colors disabled:opacity-60"
+                  title="Change profile picture"
+                >
+                  {avatarUploading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="h-3.5 w-3.5" />
+                  )}
+                </button>
               </div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Profile picture upload WIP
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
+
+              <button
+                onClick={handleAvatarClick}
+                disabled={avatarUploading}
+                className="text-sm text-emerald-600 hover:text-emerald-500 font-medium transition-colors disabled:opacity-50"
+              >
+                {avatarUploading ? "Uploading…" : "Upload new photo"}
+              </button>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                JPG, PNG, GIF — max 5 MB
               </p>
+              {avatarError && (
+                <p className="text-xs text-red-500 mt-2">{avatarError}</p>
+              )}
             </div>
 
             <button
