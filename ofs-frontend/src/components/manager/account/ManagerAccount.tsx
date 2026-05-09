@@ -108,7 +108,7 @@ export default function ManagerAccountPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Username 
+  // ── Username ──────────────────────────────────────────────
   const startEditingUsername = () => {
     setUsernameInput(profile?.username ?? "");
     setUsernameError(null);
@@ -147,7 +147,7 @@ export default function ManagerAccountPage() {
     }
   };
 
-  // Avatar 
+  // ── Avatar ────────────────────────────────────────────────
   const handleAvatarClick = () => fileInputRef.current?.click();
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,7 +199,7 @@ export default function ManagerAccountPage() {
     e.target.value = "";
   };
 
-  //Role management 
+  // ── Role management ───────────────────────────────────────
   const handleEmailSearch = (value: string) => {
     setEmailQuery(value);
     setSelectedUser(null);
@@ -221,7 +221,12 @@ export default function ManagerAccountPage() {
           search_email: value.trim(),
         });
         if (error) throw error;
-        setSearchResults((data as SearchResult[]) ?? []);
+
+        // Filter out the current manager's own account
+        const filtered = ((data as SearchResult[]) ?? []).filter(
+          (u) => u.id !== profile?.id
+        );
+        setSearchResults(filtered);
         setShowDropdown(true);
       } catch (err: any) {
         console.error(err);
@@ -242,6 +247,11 @@ export default function ManagerAccountPage() {
 
   const handleRoleUpdate = async (newRole: "user" | "manager") => {
     if (!selectedUser) return;
+    // Guard: never allow acting on own account
+    if (selectedUser.id === profile?.id) {
+      setRoleError("You cannot change your own role.");
+      return;
+    }
     setRoleUpdating(true);
     setRoleSuccess(null);
     setRoleError(null);
@@ -280,7 +290,7 @@ export default function ManagerAccountPage() {
     router.replace("/");
   }
 
-  // Render 
+  //  Render 
   if (loading) {
     return (
       <>
@@ -302,7 +312,7 @@ export default function ManagerAccountPage() {
       <main className="min-h-screen animate-fade-slide-up delay-200 pt-10 bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 text-zinc-900 dark:text-violet-50 p-6">
         <div className="mx-auto w-full max-w-4xl space-y-6">
 
-          {/* ── Main profile card ── */}
+          {/* Main profile card */}
           <div className="bg-white/80 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/50 backdrop-blur-sm rounded-2xl p-8 shadow-xl shadow-black/10 dark:shadow-black/30">
             <div className="flex items-center gap-3 mb-6">
               <Shield className="h-8 w-8 text-emerald-600" />
@@ -318,7 +328,6 @@ export default function ManagerAccountPage() {
               <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-6">
                 <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Account Details</h2>
                 <div className="space-y-5">
-                  {/* Username */}
                   <div className="flex flex-col gap-1">
                     <span className="text-sm text-zinc-600 dark:text-zinc-300">Username</span>
                     {editingUsername ? (
@@ -356,13 +365,11 @@ export default function ManagerAccountPage() {
                     {usernameError && <p className="text-xs text-red-500 mt-1">{usernameError}</p>}
                   </div>
 
-                  {/* Email */}
                   <div className="flex flex-col gap-1">
                     <span className="text-sm text-zinc-600 dark:text-zinc-300">Email</span>
                     <span className="text-lg font-medium text-zinc-900 dark:text-zinc-100">{profile.email}</span>
                   </div>
 
-                  {/* Role badge */}
                   <div className="flex flex-col gap-1">
                     <span className="text-sm text-zinc-600 dark:text-zinc-300">Role</span>
                     <span className="inline-flex items-center gap-1.5 w-fit px-2.5 py-1 rounded-full text-xs border border-emerald-300/80 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/20 font-medium">
@@ -372,7 +379,7 @@ export default function ManagerAccountPage() {
                 </div>
               </section>
 
-              {/* Profile Picture  */}
+              {/* Profile Picture */}
               <section className="rounded-2xl border border-zinc-200 dark:border-zinc-700/50 bg-white/60 dark:bg-zinc-900/30 p-6">
                 <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Profile Picture</h2>
                 <div className="text-center mb-6">
@@ -408,7 +415,7 @@ export default function ManagerAccountPage() {
             </div>
           </div>
 
-          {/* Role Management card  */}
+          {/* ── Role Management card ── */}
           <div className="bg-white/80 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/50 backdrop-blur-sm rounded-2xl p-8 shadow-xl shadow-black/10 dark:shadow-black/30">
             <div className="flex items-center gap-3 mb-2">
               <UserCog className="h-7 w-7 text-emerald-600" />
@@ -418,7 +425,6 @@ export default function ManagerAccountPage() {
               Search for a user by email address to promote or demote their role.
             </p>
 
-            {/* Search */}
             <div className="relative" ref={searchRef}>
               <div className="relative flex items-center">
                 <Search className="absolute left-3 h-4 w-4 text-zinc-400 pointer-events-none" />
