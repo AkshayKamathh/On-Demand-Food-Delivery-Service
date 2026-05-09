@@ -191,6 +191,42 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 
 -- ============================================================
+-- ROLE MANAGEMENT FUNCTIONS
+-- ============================================================
+
+-- Search profiles by email (managers only)
+CREATE OR REPLACE FUNCTION public.search_profiles_by_email(search_email text)
+RETURNS TABLE (id uuid, email text, username text, role text)
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT p.id, p.email, p.username, p.role
+  FROM public.profiles p
+  WHERE p.email ILIKE '%' || search_email || '%'
+    AND is_manager()
+  LIMIT 10;
+$$;
+
+-- Promote or demote a user's role (managers only)
+CREATE OR REPLACE FUNCTION public.set_user_role(target_user_id uuid, new_role text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF NOT is_manager() THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  IF new_role NOT IN ('user', 'manager') THEN
+    RAISE EXCEPTION 'Invalid role: must be ''user'' or ''manager''';
+  END IF;
+  UPDATE public.profiles SET role = new_role WHERE id = target_user_id;
+END;
+$$;
+
+
+-- ============================================================
 -- RLS POLICIES
 -- ============================================================
 
@@ -430,7 +466,6 @@ CREATE POLICY "Managers can delete any inquiry"
 -- STORAGE: Avatar upload policies
 -- ============================================================
 
--- Allow users to upload/update their own avatar
 CREATE POLICY "Users can upload own avatar"
 ON storage.objects FOR INSERT
 TO authenticated
@@ -441,8 +476,14 @@ ON storage.objects FOR UPDATE
 TO authenticated
 USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
 
--- Allow public reads
 CREATE POLICY "Public avatar read"
 ON storage.objects FOR SELECT
 TO public
 USING (bucket_id = 'avatars');
+
+
+-- ============================================================
+-- INITIAL SETUP: Run this after your first signup to grant
+-- yourself manager access. Replace with your actual email.
+-- ============================================================
+-- UPDATE public.profiles SET role = 'manager' WHERE email = 'your@email.com';
