@@ -80,6 +80,7 @@ npm install
 ```bash
 cd ofs-backend
 pip install --no-cache-dir -r requirements.txt
+npm install
 ```
 ```bash
 docker compose up --build
@@ -87,3 +88,19 @@ docker compose up --build
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
+
+## Creating your first Manager user
+To create your first manager user, make sure to sign up and create a regular user. Once you have done so,
+- Navigate to your Supabase database
+- Go to SQL Editor
+- Create a new snippet
+- paste this query in and replace the email with the email you used to sign up:
+
+After doing so, you'll be able to access the Manager Dashboard and add more Manager roles from the Manager Account page.
+```
+-- To set your first user to manager, run this query
+-- Replace 'your@email.com' with the email of the user you want to set to manager
+UPDATE public.profiles
+SET role = 'manager'
+WHERE email = 'your@email.com';
+```
