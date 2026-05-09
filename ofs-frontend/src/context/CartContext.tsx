@@ -56,6 +56,7 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 const PATCH_DEBOUNCE_MS = 250;
 const CART_API_URL = "http://localhost:8000/cart/items";
 
+
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
@@ -95,6 +96,20 @@ function mapServerItem(item: any, fallback?: Partial<CartItem>): CartItem {
   };
 }
 
+function parseApiError(text: string, fallback: string): string {
+  try {
+    const json = JSON.parse(text);
+    if (typeof json.detail === "string") return json.detail;
+    if (Array.isArray(json.detail)) {
+      return json.detail.map((e: any) => e.msg ?? String(e)).join(", ");
+    }
+    return text || fallback;
+  } catch {
+    return text || fallback;
+  }
+}
+
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartError, setCartError] = useState("");
@@ -109,11 +124,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!cartError) return;
-
-    const timeoutId = window.setTimeout(() => {
-      setCartError("");
-    }, 4000);
-
+    const timeoutId = window.setTimeout(() => setCartError(""), 4000);
     return () => window.clearTimeout(timeoutId);
   }, [cartError]);
 
@@ -131,20 +142,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       headers = await getAuthHeaders();
     } catch {
-      // No auth — only clear if we know user is logged out
       setIsCartReady(true);
       return;
     }
-  
+
     try {
       const res = await fetchWithTimeout(CART_API_URL, { headers }, 10000);
-  
+
       if (!res.ok) {
-        // Don't wipe cart on a bad response — just mark ready
         setIsCartReady(true);
         return;
       }
-  
+
       const dataJson = await res.json();
       setCartError("");
       setCartItems(dataJson.map((item: any) => mapServerItem(item)));
@@ -164,12 +173,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       image: string | null;
       quantity?: number;
     }) => {
-      const headers = await getAuthHeaders();
+      const authHeaders = await getAuthHeaders();
       const res = await fetchWithTimeout(
         CART_API_URL,
         {
           method: "POST",
-          headers,
+          headers: { ...authHeaders, "Content-Type": "application/json" },
           body: JSON.stringify({
             item_id: item.id,
             quantity: item.quantity ?? 1,
@@ -179,8 +188,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (!res.ok) {
-        const text = await res.text();
-        const message = text || "Failed to add item to cart";
+        const message = parseApiError(await res.text(), "Failed to add item to cart");
         setCartError(message);
         throw new Error(message);
       }
@@ -195,7 +203,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             x.item_id === saved.item_id ? { ...x, quantity: saved.quantity } : x
           );
         }
-
         return [
           ...prev,
           mapServerItem(saved, {
@@ -225,17 +232,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const { target, controller } = entry;
 
       try {
-        const headers = await getAuthHeaders();
+        const authHeaders = await getAuthHeaders();
 
         if (target <= 0) {
           const res = await fetchWithTimeout(
             `${CART_API_URL}/${id}`,
-            { method: "DELETE", headers, signal: controller.signal },
+            { method: "DELETE", headers: authHeaders, signal: controller.signal },
             10000
           );
           if (!res.ok && res.status !== 404) {
-            const text = await res.text();
-            throw new Error(text || "Failed to remove cart item");
+            const message = parseApiError(await res.text(), "Failed to remove cart item");
+            throw new Error(message);
           }
           setCartError("");
           setCartItems((prev) => prev.filter((x) => x.id !== id));
@@ -244,15 +251,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             `${CART_API_URL}/${id}`,
             {
               method: "PATCH",
-              headers,
+              headers: { ...authHeaders, "Content-Type": "application/json" },
               body: JSON.stringify({ quantity: target }),
               signal: controller.signal,
             },
             10000
           );
           if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || "Failed to update cart item");
+            const message = parseApiError(await res.text(), "Failed to update cart item");
+            throw new Error(message);
           }
           const saved = await res.json();
           setCartError("");
@@ -261,9 +268,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           );
         }
       } catch (err) {
-        if ((err as Error)?.name === "AbortError") {
-          return;
-        }
+        if ((err as Error)?.name === "AbortError") return;
         setCartError(
           err instanceof Error ? err.message : "Failed to update cart item"
         );
@@ -283,9 +288,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cancelPending(id);
 
       setCartItems((prev) => {
-        if (quantity <= 0) {
-          return prev.filter((x) => x.id !== id);
-        }
+        if (quantity <= 0) return prev.filter((x) => x.id !== id);
         return prev.map((x) => (x.id === id ? { ...x, quantity } : x));
       });
 
@@ -302,29 +305,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-  
+
     loadCart();
-  
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return;
-  
-      // Only reload cart on actual sign-in/sign-out events,
-      // NOT on token refreshes (which also fire SIGNED_IN)
+
       if (event === "SIGNED_OUT") {
         setCartItems([]);
         setIsCartReady(true);
       } else if (event === "SIGNED_IN") {
-        // Guard: only load if cart is currently empty to avoid
-        // wiping cart during background token refresh
-        setCartItems(prev => {
-          if (prev.length === 0) {
-            loadCart();
-          }
+        setCartItems((prev) => {
+          if (prev.length === 0) loadCart();
           return prev;
         });
       }
     });
-  
+
     return () => {
       cancelled = true;
       subscription.unsubscribe();
@@ -342,8 +341,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     0
   );
   const totalWeight = cartItems.reduce(
-    (sum, item) =>
-      sum + item.quantity * Number(item.weight.replace(" lb", "")),
+    (sum, item) => sum + item.quantity * Number(item.weight.replace(" lb", "")),
     0
   );
   const deliveryFee = totalWeight < 20 ? 0 : 10;
