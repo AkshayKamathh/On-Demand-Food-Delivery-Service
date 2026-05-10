@@ -56,6 +56,38 @@ export default function ManagerDashboardPage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
+
+  function handleSkuChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setSkuInput(val);
+  
+    const match = inventory.find((item) => item.sku === val.trim());
+    if (match) {
+      setNameInput(match.name);
+      setCategoryInput(match.category);
+      setWeightInput(String(match.weight_lb));
+      setStockInput(String(match.stock));
+      setPriceInput(String(match.price));
+      setImageFile(null);
+      setImageUrlInput(match.image_url ?? "");
+      if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
+        setImagePreview(match.image_url ?? "");
+      setSaveMsg(`Editing SKU ${match.sku} — ${match.name}`);
+    } else {
+      // Clear fields if SKU doesn't match anything
+      setNameInput("");
+      setCategoryInput("");
+      setWeightInput("");
+      setStockInput("");
+      setPriceInput("");
+      setImageFile(null);
+      setImageUrlInput("");
+      if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
+        setImagePreview("");
+      setSaveMsg("");
+    }
+  }
+
   useEffect(() => {
     return () => {
       if (newImagePreview.startsWith("blob:")) URL.revokeObjectURL(newImagePreview);
@@ -622,7 +654,7 @@ export default function ManagerDashboardPage() {
                       className={inputClass}
                       placeholder="e.g. 12"
                       value={skuInput}
-                      onChange={(e) => setSkuInput(e.target.value)}
+                      onChange={handleSkuChange}
                     />
                   </div>
 

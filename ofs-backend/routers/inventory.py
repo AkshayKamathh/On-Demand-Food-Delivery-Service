@@ -60,6 +60,7 @@ def list_inventory():
                 weight_lb=float(r["weight"]) if r["weight"] is not None else 0.0,
                 stock=stock,
                 status=status_from_stock(stock),
+                image_url=r["image_url"],
                 is_active=bool(r["is_active"]),
             )
         )
