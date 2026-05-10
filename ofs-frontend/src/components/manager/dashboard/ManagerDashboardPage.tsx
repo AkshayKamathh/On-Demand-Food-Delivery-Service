@@ -481,7 +481,7 @@ export default function ManagerDashboardPage() {
                     <div>
                       <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Add Inventory Item</h3>
                       <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                        Creates a new item via POST /inventory.
+                        SKU is assigned automatically. All fields except Image are required.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -502,57 +502,110 @@ export default function ManagerDashboardPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <input
-                      className={inputClass}
-                      placeholder="Name (e.g. Organic Tomatoes)"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                    />
-                    <select className={inputClass} value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
-                      <option>Fruits</option>
-                      <option>Vegetables</option>
-                      <option>Dairy</option>
-                      <option>Bakery</option>
-                      <option>Meat & Seafood</option>
-                    </select>
-                    <input
-                      className={inputClass}
-                      placeholder="Weight lb (e.g. 1.2)"
-                      value={newWeight}
-                      onChange={(e) => setNewWeight(e.target.value)}
-                    />
-                    <input
-                      className={inputClass}
-                      placeholder="Price (e.g. 2.75)"
-                      value={newPrice}
-                      onChange={(e) => setNewPrice(e.target.value)}
-                    />
-                    <input
-                      className={inputClass}
-                      placeholder="Stock (e.g. 20)"
-                      value={newStock}
-                      onChange={(e) => setNewStock(e.target.value)}
-                    />
-                    <input
-                      className={inputClass}
-                      placeholder="Image URL (optional)"
-                      value={newImageUrl}
-                      onChange={(e) => {
-                        setNewImageUrl(e.target.value);
-                        if (!newImageFile) {
-                          setPreviewWithCleanup(e.target.value.trim(), newImagePreview, setNewImagePreview);
-                        }
-                      }}
-                    />
-                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-600 transition-colors hover:bg-white/60 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900/30">
-                      <input type="file" accept="image/*" className="hidden" onChange={handleAddFileChange} />
-                      {newImageFile ? `Selected: ${newImageFile.name}` : "Choose product photo"}
-                    </label>
+
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className={inputClass}
+                        placeholder="e.g. Organic Tomatoes"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        Category <span className="text-red-500">*</span>
+                      </label>
+                      <select className={inputClass} value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+                        <option>Fruits</option>
+                        <option>Vegetables</option>
+                        <option>Dairy</option>
+                        <option>Bakery</option>
+                        <option>Meat & Seafood</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        Weight (lb) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className={inputClass}
+                        placeholder="e.g. 1.2"
+                        value={newWeight}
+                        onChange={(e) => setNewWeight(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        Price <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className={inputClass}
+                        placeholder="e.g. 2.75"
+                        value={newPrice}
+                        onChange={(e) => setNewPrice(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        Stock <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className={inputClass}
+                        placeholder="e.g. 20"
+                        value={newStock}
+                        onChange={(e) => setNewStock(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        Image URL <span className="text-zinc-400">(optional)</span>
+                      </label>
+                      <input
+                        className={inputClass}
+                        placeholder="https://..."
+                        value={newImageUrl}
+                        onChange={(e) => {
+                          setNewImageUrl(e.target.value);
+                          if (!newImageFile) {
+                            setPreviewWithCleanup(e.target.value.trim(), newImagePreview, setNewImagePreview);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        Photo upload <span className="text-zinc-400">(optional)</span>
+                      </label>
+                      <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-600 transition-colors hover:bg-white/60 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900/30">
+                        <input type="file" accept="image/*" className="hidden" onChange={handleAddFileChange} />
+                        {newImageFile ? `Selected: ${newImageFile.name}` : "Choose product photo"}
+                      </label>
+                    </div>
                   </div>
+
                   <div className="mt-4">
                     <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-300">Photo preview</p>
-                    <ImagePreview imageUrl={newImagePreview} />
+                    {newImagePreview ? (
+                      <img
+                        src={newImagePreview}
+                        alt="New product preview"
+                        className="h-28 w-28 rounded-xl border border-zinc-200 object-cover dark:border-zinc-700"
+                      />
+                    ) : (
+                      <div className="flex h-28 w-28 items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-zinc-50 text-sm text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/40 dark:text-zinc-500">
+                        No preview
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
