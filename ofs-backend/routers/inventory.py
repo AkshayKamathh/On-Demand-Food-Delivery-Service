@@ -105,13 +105,28 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
     item_id = parse_item_id(sku)
     data = payload.model_dump(exclude_unset=True)
 
-    # Your business rule
     if "stock" in data and data["stock"] is not None and data["stock"] < 0:
         raise HTTPException(status_code=400, detail="Stock cannot be negative")
 
-    # Only update fields that exist in public.items
     set_clauses = []
     params = {"item_id": item_id}
+
+    if "name" in data and data["name"] is not None:
+        set_clauses.append("description = %(description)s")
+        params["description"] = data["name"]
+
+    if "category" in data and data["category"] is not None:
+        category_id = CATEGORY_NAME_TO_ID.get(data["category"])
+        if category_id is None:
+            raise HTTPException(status_code=400, detail=f"Unknown category: {data['category']}")
+        set_clauses.append("category_id = %(category_id)s")
+        params["category_id"] = category_id
+
+    if "weight_lb" in data and data["weight_lb"] is not None:
+        if data["weight_lb"] <= 0:
+            raise HTTPException(status_code=400, detail="Weight must be greater than 0")
+        set_clauses.append("weight = %(weight)s")
+        params["weight"] = data["weight_lb"]
 
     if "price" in data and data["price"] is not None:
         set_clauses.append("price = %(price)s")
@@ -120,7 +135,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
     if "stock" in data and data["stock"] is not None:
         set_clauses.append("stock = %(stock)s")
         params["stock"] = data["stock"]
-    
+
     if "is_active" in data and data["is_active"] is not None:
         set_clauses.append("is_active = %(is_active)s")
         params["is_active"] = data["is_active"]
@@ -128,12 +143,6 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
     if "image_url" in data:
         set_clauses.append("image_url = %(image_url)s")
         params["image_url"] = data["image_url"]
-
-    # Optional: allow updating category if your payload includes it and you want to support it later.
-    # If your InventoryUpdate schema does not have category_id, ignore this.
-    if "category_id" in data and data["category_id"] is not None:
-        set_clauses.append("category_id = %(category_id)s")
-        params["category_id"] = data["category_id"]
 
     if not set_clauses:
         raise HTTPException(status_code=400, detail="No updatable fields provided")
@@ -154,8 +163,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         conn.commit()
 
     stock = int(r["stock"]) if r["stock"] is not None else 0
-    category_id = r["category_id"]
-    category_name = CATEGORY_ID_TO_NAME.get(category_id, "Uncategorized")
+    category_name = CATEGORY_ID_TO_NAME.get(r["category_id"], "Uncategorized")
     return InventoryItem(
         sku=str(r["item_id"]),
         name=r["description"],
@@ -165,6 +173,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         stock=stock,
         status=status_from_stock(stock),
         image_url=r["image_url"],
+        is_active=bool(r["is_active"]),
     )
 
 # DELETE /inventory/{sku}  — was hard delete, now soft delete

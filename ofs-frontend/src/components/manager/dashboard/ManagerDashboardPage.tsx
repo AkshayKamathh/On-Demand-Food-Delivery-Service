@@ -45,6 +45,9 @@ export default function ManagerDashboardPage() {
   const [adding, setAdding] = useState(false);
 
   const [skuInput, setSkuInput] = useState("");
+  const [nameInput, setNameInput] = useState("");
+  const [categoryInput, setCategoryInput] = useState("");
+  const [weightInput, setWeightInput] = useState("");
   const [stockInput, setStockInput] = useState("");
   const [priceInput, setPriceInput] = useState("");
   const [imageUrlInput, setImageUrlInput] = useState("");
@@ -55,12 +58,8 @@ export default function ManagerDashboardPage() {
 
   useEffect(() => {
     return () => {
-      if (newImagePreview.startsWith("blob:")) {
-        URL.revokeObjectURL(newImagePreview);
-      }
-      if (imagePreview.startsWith("blob:")) {
-        URL.revokeObjectURL(imagePreview);
-      }
+      if (newImagePreview.startsWith("blob:")) URL.revokeObjectURL(newImagePreview);
+      if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
     };
   }, [newImagePreview, imagePreview]);
 
@@ -69,24 +68,16 @@ export default function ManagerDashboardPage() {
     currentPreview: string,
     setter: (value: string) => void
   ) {
-    if (currentPreview.startsWith("blob:")) {
-      URL.revokeObjectURL(currentPreview);
-    }
+    if (currentPreview.startsWith("blob:")) URL.revokeObjectURL(currentPreview);
     setter(nextPreview);
   }
 
   function normalizeErrorMessage(message: string, fallback: string) {
     if (!message) return fallback;
-
     try {
       const parsed = JSON.parse(message);
-      if (typeof parsed?.detail === "string" && parsed.detail.trim()) {
-        return parsed.detail;
-      }
-    } catch {
-      // Fall back to raw text when the backend did not return JSON.
-    }
-
+      if (typeof parsed?.detail === "string" && parsed.detail.trim()) return parsed.detail;
+    } catch {}
     return message;
   }
 
@@ -101,28 +92,19 @@ export default function ManagerDashboardPage() {
     setPreviewWithCleanup("", newImagePreview, setNewImagePreview);
   }
 
-  function resetEditImageInputs() {
-    setImageFile(null);
-    setImageUrlInput("");
-    setPreviewWithCleanup("", imagePreview, setImagePreview);
-  }
-
   function handleAddFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setNewImageFile(file);
-
     if (!file) {
       setPreviewWithCleanup(newImageUrl.trim(), newImagePreview, setNewImagePreview);
       return;
     }
-
     if (!file.type.startsWith("image/")) {
       setSaveMsg("Please choose an image file.");
       e.target.value = "";
       setNewImageFile(null);
       return;
     }
-
     setSaveMsg("");
     setPreviewWithCleanup(URL.createObjectURL(file), newImagePreview, setNewImagePreview);
   }
@@ -130,19 +112,16 @@ export default function ManagerDashboardPage() {
   function handleEditFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setImageFile(file);
-
     if (!file) {
       setPreviewWithCleanup(imageUrlInput.trim(), imagePreview, setImagePreview);
       return;
     }
-
     if (!file.type.startsWith("image/")) {
       setSaveMsg("Please choose an image file.");
       e.target.value = "";
       setImageFile(null);
       return;
     }
-
     setSaveMsg("");
     setPreviewWithCleanup(URL.createObjectURL(file), imagePreview, setImagePreview);
   }
@@ -150,20 +129,12 @@ export default function ManagerDashboardPage() {
   async function uploadProductImage(file: File) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
     const path = `products/${Date.now()}-${safeName}`;
-
     const { error: uploadError } = await supabase.storage
       .from(IMAGE_BUCKET)
       .upload(path, file, { upsert: false, contentType: file.type });
-
-    if (uploadError) {
-      throw new Error(uploadError.message || "Unable to upload product image");
-    }
-
+    if (uploadError) throw new Error(uploadError.message || "Unable to upload product image");
     const { data } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path);
-    if (!data?.publicUrl) {
-      throw new Error("Unable to retrieve uploaded image URL");
-    }
-
+    if (!data?.publicUrl) throw new Error("Unable to retrieve uploaded image URL");
     return data.publicUrl;
   }
 
@@ -174,10 +145,7 @@ export default function ManagerDashboardPage() {
       setError("");
 
       const name = newName.trim();
-      if (!name) {
-        setSaveMsg("Name is required.");
-        return;
-      }
+      if (!name) { setSaveMsg("Name is required."); return; }
 
       const priceNum = Number(newPrice);
       const weightNum = Number(newWeight);
@@ -197,9 +165,7 @@ export default function ManagerDashboardPage() {
       }
 
       let finalImageUrl: string | null = newImageUrl.trim() || null;
-      if (newImageFile) {
-        finalImageUrl = await uploadProductImage(newImageFile);
-      }
+      if (newImageFile) finalImageUrl = await uploadProductImage(newImageFile);
 
       const payload = {
         name,
@@ -240,9 +206,7 @@ export default function ManagerDashboardPage() {
       if (!res.ok) throw new Error(`Backend error: ${res.status}`);
       const data = (await res.json()) as KpiStats;
       setKpiData(data);
-    } catch {
-      // Non-fatal: KPI cards will show "—" if this fails
-    }
+    } catch {}
   }
 
   async function loadInventory() {
@@ -268,12 +232,26 @@ export default function ManagerDashboardPage() {
       setError("");
 
       const sku = skuInput.trim();
-      if (!sku) {
-        setSaveMsg("Enter a SKU first.");
-        return;
-      }
+      if (!sku) { setSaveMsg("Enter a SKU first."); return; }
 
       const payload: Record<string, any> = {};
+
+      if (nameInput.trim() !== "") {
+        payload.name = nameInput.trim();
+      }
+
+      if (categoryInput.trim() !== "") {
+        payload.category = categoryInput.trim();
+      }
+
+      if (weightInput.trim() !== "") {
+        const weightNum = Number(weightInput);
+        if (!Number.isFinite(weightNum) || weightNum <= 0) {
+          setSaveMsg("Weight must be a valid number (> 0).");
+          return;
+        }
+        payload.weight_lb = weightNum;
+      }
 
       if (stockInput.trim() !== "") {
         const stockNum = Number(stockInput);
@@ -300,7 +278,7 @@ export default function ManagerDashboardPage() {
       }
 
       if (Object.keys(payload).length === 0) {
-        setSaveMsg("Enter stock, price, or an updated image to save.");
+        setSaveMsg("Enter at least one field to update.");
         return;
       }
 
@@ -318,6 +296,11 @@ export default function ManagerDashboardPage() {
       const updated = (await res.json()) as InventoryItem;
       setInventory((prev) => prev.map((x) => (x.sku === updated.sku ? updated : x)));
       setSaveMsg(`Updated ${updated.sku} successfully.`);
+      setNameInput("");
+      setCategoryInput("");
+      setWeightInput("");
+      setStockInput("");
+      setPriceInput("");
       setImageFile(null);
       setImageUrlInput(updated.image_url ?? "");
       setPreviewWithCleanup(updated.image_url ?? "", imagePreview, setImagePreview);
@@ -331,12 +314,15 @@ export default function ManagerDashboardPage() {
 
   function startEdit(item: InventoryItem) {
     setSkuInput(item.sku);
+    setNameInput(item.name);
+    setCategoryInput(item.category);
+    setWeightInput(String(item.weight_lb));
     setStockInput(String(item.stock));
     setPriceInput(String(item.price));
     setImageFile(null);
     setImageUrlInput(item.image_url ?? "");
     setPreviewWithCleanup(item.image_url ?? "", imagePreview, setImagePreview);
-    setSaveMsg(`Editing ${item.sku} - change fields then click Save Update.`);
+    setSaveMsg(`Editing ${item.sku} — change fields then click Save Update.`);
   }
 
   async function deleteItem(sku: string) {
@@ -353,7 +339,6 @@ export default function ManagerDashboardPage() {
         throw new Error(normalizeErrorMessage(text, `HTTP ${res.status}`));
       }
       const updated = await res.json();
-      // Update the row in place instead of removing it, so Restore button appears
       setInventory((prev) => prev.map((x) => (x.sku === updated.sku ? updated : x)));
       setSaveMsg(`Removed ${sku} from store. It can be restored.`);
     } catch (e: any) {
@@ -363,7 +348,8 @@ export default function ManagerDashboardPage() {
 
   async function restoreItem(sku: string) {
     try {
-      setError(""); setSaveMsg("");
+      setError("");
+      setSaveMsg("");
       const res = await fetch(`${BASE_URL}/inventory/${encodeURIComponent(sku)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -392,6 +378,8 @@ export default function ManagerDashboardPage() {
       <main className="min-h-screen bg-gradient-to-b from-amber-100 via-emerald-100 to-amber-100 dark:from-zinc-950 dark:via-emerald-800 dark:to-zinc-950 p-6">
         <div className="mx-auto w-full max-w-6xl">
           <div className="rounded-2xl border border-zinc-200 bg-white/80 p-7 shadow-xl shadow-black/10 backdrop-blur-sm dark:border-zinc-700/50 dark:bg-zinc-800/60 dark:shadow-black/30">
+
+            {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100 md:text-3xl">
@@ -411,6 +399,7 @@ export default function ManagerDashboardPage() {
               </div>
             </div>
 
+            {/* KPI Cards */}
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {(kpiData
                 ? [
@@ -431,13 +420,12 @@ export default function ManagerDashboardPage() {
                   className="rounded-2xl border border-zinc-200 bg-white/60 p-4 dark:border-zinc-700/50 dark:bg-zinc-900/30"
                 >
                   <div className="text-sm text-zinc-600 dark:text-zinc-300">{k.label}</div>
-                  <div className="mt-2 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-                    {k.value}
-                  </div>
+                  <div className="mt-2 text-xl font-semibold text-zinc-900 dark:text-zinc-100">{k.value}</div>
                 </div>
               ))}
             </div>
 
+            {/* Inventory Section */}
             <section className="mt-6 rounded-2xl border border-zinc-200 bg-white/60 p-5 dark:border-zinc-700/50 dark:bg-zinc-900/30">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -454,6 +442,7 @@ export default function ManagerDashboardPage() {
                 </button>
               </div>
 
+              {/* Add Item Form */}
               {showAdd && (
                 <div className="mt-4 rounded-2xl border border-zinc-200 bg-white/60 p-4 dark:border-zinc-700/50 dark:bg-zinc-900/30">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -465,10 +454,7 @@ export default function ManagerDashboardPage() {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => {
-                          setShowAdd(false);
-                          resetAddForm();
-                        }}
+                        onClick={() => { setShowAdd(false); resetAddForm(); }}
                         className="rounded-xl border border-zinc-300 px-4 py-2 transition-colors hover:bg-white/60 dark:border-zinc-600 dark:hover:bg-zinc-900/30"
                       >
                         Cancel
@@ -484,7 +470,6 @@ export default function ManagerDashboardPage() {
                       </button>
                     </div>
                   </div>
-
                   <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                     <input
                       className={inputClass}
@@ -533,7 +518,6 @@ export default function ManagerDashboardPage() {
                       {newImageFile ? `Selected: ${newImageFile.name}` : "Choose product photo"}
                     </label>
                   </div>
-
                   <div className="mt-4">
                     <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-300">Photo preview</p>
                     <ImagePreview imageUrl={newImagePreview} />
@@ -544,22 +528,26 @@ export default function ManagerDashboardPage() {
               {loading && (
                 <div className="mt-4 text-sm text-zinc-600 dark:text-zinc-300">Loading inventory from backend...</div>
               )}
-              {error && <div className="mt-4 text-sm text-red-600">Error loading inventory: {error}</div>}
+              {error && (
+                <div className="mt-4 text-sm text-red-600">Error loading inventory: {error}</div>
+              )}
 
+              {/* Inventory Table */}
               <div className="mt-5 overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700/50">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50/60 dark:bg-zinc-900/40">
                     <tr className="text-left text-zinc-600 dark:text-zinc-300">
                       {["SKU", "Item", "Category", "Weight", "Price", "Stock", "Status", "Actions"].map((h) => (
-                        <th key={h} className="px-4 py-3 font-medium">
-                          {h}
-                        </th>
+                        <th key={h} className="px-4 py-3 font-medium">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200 dark:divide-zinc-700/50">
                     {inventory.map((p) => (
-                      <tr key={p.sku} className={`text-zinc-900 dark:text-zinc-100 ${!p.is_active ? "opacity-50" : ""}`}>
+                      <tr
+                        key={p.sku}
+                        className={`text-zinc-900 dark:text-zinc-100 ${!p.is_active ? "opacity-50" : ""}`}
+                      >
                         <td className="px-4 py-3 whitespace-nowrap">{p.sku}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{p.name}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-zinc-600 dark:text-zinc-300">{p.category}</td>
@@ -577,20 +565,26 @@ export default function ManagerDashboardPage() {
                             Edit
                           </button>
                           {p.is_active ? (
-                            <button onClick={() => deleteItem(p.sku)} className="ml-2 px-3 py-1.5 rounded-lg border border-red-300/80 dark:border-red-500/40 text-red-600 dark:text-red-300 hover:bg-red-50/60 dark:hover:bg-red-900/20 transition-colors">
+                            <button
+                              onClick={() => deleteItem(p.sku)}
+                              className="ml-2 px-3 py-1.5 rounded-lg border border-red-300/80 dark:border-red-500/40 text-red-600 dark:text-red-300 hover:bg-red-50/60 dark:hover:bg-red-900/20 transition-colors"
+                            >
                               Remove
                             </button>
                           ) : (
-                            <button onClick={() => restoreItem(p.sku)} className="ml-2 px-3 py-1.5 rounded-lg border border-emerald-300/80 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50/60 dark:hover:bg-emerald-900/20 transition-colors">
+                            <button
+                              onClick={() => restoreItem(p.sku)}
+                              className="ml-2 px-3 py-1.5 rounded-lg border border-emerald-300/80 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50/60 dark:hover:bg-emerald-900/20 transition-colors"
+                            >
                               Restore
                             </button>
                           )}
-                      </td>
+                        </td>
                       </tr>
                     ))}
                     {!loading && !error && inventory.length === 0 && (
                       <tr>
-                        <td className="px-4 py-6 text-zinc-600 dark:text-zinc-300" colSpan={9}>
+                        <td className="px-4 py-6 text-zinc-600 dark:text-zinc-300" colSpan={8}>
                           No inventory returned from backend.
                         </td>
                       </tr>
@@ -599,12 +593,13 @@ export default function ManagerDashboardPage() {
                 </table>
               </div>
 
+              {/* Quick Update Form */}
               <div className="mt-5 rounded-2xl border border-zinc-200 bg-white/60 p-4 dark:border-zinc-700/50 dark:bg-zinc-900/30">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Quick Update</h3>
                     <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                      Update stock, price, or photo for an item via PATCH.
+                      Update fields for an item via PATCH. All fields except Item ID are optional.
                     </p>
                   </div>
                   <button
@@ -618,40 +613,111 @@ export default function ManagerDashboardPage() {
                   </button>
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <input
-                    className={inputClass}
-                    placeholder="Item ID (e.g. 12)"
-                    value={skuInput}
-                    onChange={(e) => setSkuInput(e.target.value)}
-                  />
-                  <input
-                    className={inputClass}
-                    placeholder="New stock (e.g. 50)"
-                    value={stockInput}
-                    onChange={(e) => setStockInput(e.target.value)}
-                  />
-                  <input
-                    className={inputClass}
-                    placeholder="New price (e.g. 2.99)"
-                    value={priceInput}
-                    onChange={(e) => setPriceInput(e.target.value)}
-                  />
-                  <input
-                    className={inputClass}
-                    placeholder="New image URL (optional)"
-                    value={imageUrlInput}
-                    onChange={(e) => {
-                      setImageUrlInput(e.target.value);
-                      if (!imageFile) {
-                        setPreviewWithCleanup(e.target.value.trim(), imagePreview, setImagePreview);
-                      }
-                    }}
-                  />
-                  <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-600 transition-colors hover:bg-white/60 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900/30">
-                    <input type="file" accept="image/*" className="hidden" onChange={handleEditFileChange} />
-                    {imageFile ? `Selected: ${imageFile.name}` : "Choose replacement photo"}
-                  </label>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Item ID <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      className={inputClass}
+                      placeholder="e.g. 12"
+                      value={skuInput}
+                      onChange={(e) => setSkuInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Name <span className="text-zinc-400">(optional)</span>
+                    </label>
+                    <input
+                      className={inputClass}
+                      placeholder="e.g. Organic Tomatoes"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Category <span className="text-zinc-400">(optional)</span>
+                    </label>
+                    <select
+                      className={inputClass}
+                      value={categoryInput}
+                      onChange={(e) => setCategoryInput(e.target.value)}
+                    >
+                      <option value="">— unchanged —</option>
+                      <option>Fruits</option>
+                      <option>Vegetables</option>
+                      <option>Dairy</option>
+                      <option>Bakery</option>
+                      <option>Meat & Seafood</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Weight (lb) <span className="text-zinc-400">(optional)</span>
+                    </label>
+                    <input
+                      className={inputClass}
+                      placeholder="e.g. 1.5"
+                      value={weightInput}
+                      onChange={(e) => setWeightInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Stock <span className="text-zinc-400">(optional)</span>
+                    </label>
+                    <input
+                      className={inputClass}
+                      placeholder="e.g. 50"
+                      value={stockInput}
+                      onChange={(e) => setStockInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Price <span className="text-zinc-400">(optional)</span>
+                    </label>
+                    <input
+                      className={inputClass}
+                      placeholder="e.g. 2.99"
+                      value={priceInput}
+                      onChange={(e) => setPriceInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Image URL <span className="text-zinc-400">(optional)</span>
+                    </label>
+                    <input
+                      className={inputClass}
+                      placeholder="https://..."
+                      value={imageUrlInput}
+                      onChange={(e) => {
+                        setImageUrlInput(e.target.value);
+                        if (!imageFile) {
+                          setPreviewWithCleanup(e.target.value.trim(), imagePreview, setImagePreview);
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      Photo upload <span className="text-zinc-400">(optional)</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-600 transition-colors hover:bg-white/60 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900/30">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleEditFileChange} />
+                      {imageFile ? `Selected: ${imageFile.name}` : "Choose replacement photo"}
+                    </label>
+                  </div>
                 </div>
 
                 <div className="mt-4">
@@ -659,7 +725,9 @@ export default function ManagerDashboardPage() {
                   <ImagePreview imageUrl={imagePreview} />
                 </div>
 
-                {saveMsg && <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-200">{saveMsg}</p>}
+                {saveMsg && (
+                  <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-200">{saveMsg}</p>
+                )}
               </div>
             </section>
           </div>
@@ -667,18 +735,6 @@ export default function ManagerDashboardPage() {
       </main>
     </>
   );
-}
-
-function ImageThumb({ imageUrl, alt }: { imageUrl: string | null; alt: string }) {
-  if (!imageUrl) {
-    return (
-      <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-zinc-300 bg-zinc-50 text-xs text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/40 dark:text-zinc-500">
-        No img
-      </div>
-    );
-  }
-
-  return <img src={imageUrl} alt={alt} className="h-12 w-12 rounded-lg object-cover" />;
 }
 
 function ImagePreview({ imageUrl }: { imageUrl: string }) {
@@ -689,7 +745,6 @@ function ImagePreview({ imageUrl }: { imageUrl: string }) {
       </div>
     );
   }
-
   return (
     <img
       src={imageUrl}
@@ -705,11 +760,9 @@ const inputClass =
 function statusBadge(status: string) {
   const base = "inline-flex items-center rounded-full border px-2.5 py-1 text-xs";
   const s = String(status).toLowerCase();
-  if (s.includes("out")) {
+  if (s.includes("out"))
     return `${base} border-red-300/80 bg-red-50/60 text-red-600 dark:border-red-500/40 dark:bg-red-900/20 dark:text-red-300`;
-  }
-  if (s.includes("low")) {
+  if (s.includes("low"))
     return `${base} border-amber-300/80 bg-amber-50/60 text-amber-700 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-200`;
-  }
   return `${base} border-emerald-300/80 bg-emerald-50/60 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-900/20 dark:text-emerald-200`;
 }

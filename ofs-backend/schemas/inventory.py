@@ -16,7 +16,10 @@ class InventoryItem(BaseModel):
 #Used when we PATCH an inventory item
 class InventoryUpdate(BaseModel):
     #Optional fields so we can PATCH only what changes
+    name: Optional[str] = None
+    category: Optional[str] = None
     price: Optional[float] = None
+    weight_lb: Optional[float] = None
     stock: Optional[int] = None
     image_url: Optional[str] = None
     is_active: Optional[bool] = None
