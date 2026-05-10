@@ -550,7 +550,7 @@ export default function ManagerDashboardPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50/60 dark:bg-zinc-900/40">
                     <tr className="text-left text-zinc-600 dark:text-zinc-300">
-                      {["SKU", "Photo", "Item", "Category", "Weight", "Price", "Stock", "Status", "Actions"].map((h) => (
+                      {["SKU", "Item", "Category", "Weight", "Price", "Stock", "Status", "Actions"].map((h) => (
                         <th key={h} className="px-4 py-3 font-medium">
                           {h}
                         </th>
