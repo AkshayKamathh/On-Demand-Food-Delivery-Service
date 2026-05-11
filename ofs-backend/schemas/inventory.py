@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Dict, Optional
 
 #Returned when we GET an inventory item
 class InventoryItem(BaseModel):
@@ -12,6 +12,8 @@ class InventoryItem(BaseModel):
     status: str
     image_url: Optional[str] = None
     is_active: bool = True
+    long_description: Optional[str] = None
+    nutrition: Optional[Dict[str, Any]] = None
 
 #Used when we PATCH an inventory item
 class InventoryUpdate(BaseModel):
@@ -23,6 +25,8 @@ class InventoryUpdate(BaseModel):
     stock: Optional[int] = None
     image_url: Optional[str] = None
     is_active: Optional[bool] = None
+    long_description: Optional[str] = None
+    nutrition: Optional[Dict[str, Any]] = None
 
 #Use when we POST a new inventory item
 class InventoryCreate(BaseModel):

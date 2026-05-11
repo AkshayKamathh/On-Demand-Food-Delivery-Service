@@ -22,6 +22,8 @@ type InventoryItem = {
   status: string;
   image_url?: string | null;
   is_active: boolean;
+  long_description?: string | null;
+  nutrition?: Record<string, unknown> | null;
 };
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -44,6 +46,8 @@ export default function ManagerDashboardPage() {
   const [newImagePreview, setNewImagePreview] = useState("");
   const [adding, setAdding] = useState(false);
 
+  const [showEditPanel, setShowEditPanel] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [skuInput, setSkuInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [categoryInput, setCategoryInput] = useState("");
@@ -53,40 +57,10 @@ export default function ManagerDashboardPage() {
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
+  const [longDescInput, setLongDescInput] = useState("");
+  const [nutritionRows, setNutritionRows] = useState<{ key: string; value: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
-
-
-  function handleSkuChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const val = e.target.value;
-    setSkuInput(val);
-  
-    const match = inventory.find((item) => item.sku === val.trim());
-    if (match) {
-      setNameInput(match.name);
-      setCategoryInput(match.category);
-      setWeightInput(String(match.weight_lb));
-      setStockInput(String(match.stock));
-      setPriceInput(String(match.price));
-      setImageFile(null);
-      setImageUrlInput(match.image_url ?? "");
-      if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
-        setImagePreview(match.image_url ?? "");
-      setSaveMsg(`Editing SKU ${match.sku} — ${match.name}`);
-    } else {
-      // Clear fields if SKU doesn't match anything
-      setNameInput("");
-      setCategoryInput("");
-      setWeightInput("");
-      setStockInput("");
-      setPriceInput("");
-      setImageFile(null);
-      setImageUrlInput("");
-      if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
-        setImagePreview("");
-      setSaveMsg("");
-    }
-  }
 
   useEffect(() => {
     return () => {
@@ -111,6 +85,22 @@ export default function ManagerDashboardPage() {
       if (typeof parsed?.detail === "string" && parsed.detail.trim()) return parsed.detail;
     } catch {}
     return message;
+  }
+
+  function nutritionFromServer(n: Record<string, unknown> | null | undefined) {
+    if (!n || Object.keys(n).length === 0) return [];
+    return Object.entries(n).map(([key, value]) => ({ key, value: String(value) }));
+  }
+
+  function nutritionToPayload(rows: { key: string; value: string }[]): Record<string, number | string> | null {
+    const result: Record<string, number | string> = {};
+    for (const { key, value } of rows) {
+      const k = key.trim();
+      if (!k || value.trim() === "") continue;
+      const num = Number(value);
+      result[k] = Number.isFinite(num) ? num : value.trim();
+    }
+    return Object.keys(result).length > 0 ? result : null;
   }
 
   function resetAddForm() {
@@ -309,6 +299,15 @@ export default function ManagerDashboardPage() {
         payload.image_url = imageUrlInput.trim();
       }
 
+      if (longDescInput.trim() !== "") {
+        payload.long_description = longDescInput.trim();
+      }
+
+      const nutritionPayload = nutritionToPayload(nutritionRows);
+      if (nutritionPayload) {
+        payload.nutrition = nutritionPayload;
+      }
+
       if (Object.keys(payload).length === 0) {
         setSaveMsg("Enter at least one field to update.");
         return;
@@ -327,16 +326,8 @@ export default function ManagerDashboardPage() {
 
       const updated = (await res.json()) as InventoryItem;
       setInventory((prev) => prev.map((x) => (x.sku === updated.sku ? updated : x)));
-      setSaveMsg(`Updated ${updated.sku} successfully.`);
-      setNameInput("");
-      setCategoryInput("");
-      setWeightInput("");
-      setStockInput("");
-      setPriceInput("");
-      setImageFile(null);
-      setImageUrlInput(updated.image_url ?? "");
-      setPreviewWithCleanup(updated.image_url ?? "", imagePreview, setImagePreview);
       loadKpis();
+      closeEditPanel();
     } catch (e: any) {
       setSaveMsg(`Update failed: ${e?.message ?? "Unknown error"}`);
     } finally {
@@ -345,6 +336,7 @@ export default function ManagerDashboardPage() {
   }
 
   function startEdit(item: InventoryItem) {
+    setEditingItem(item);
     setSkuInput(item.sku);
     setNameInput(item.name);
     setCategoryInput(item.category);
@@ -354,7 +346,19 @@ export default function ManagerDashboardPage() {
     setImageFile(null);
     setImageUrlInput(item.image_url ?? "");
     setPreviewWithCleanup(item.image_url ?? "", imagePreview, setImagePreview);
-    setSaveMsg(`Editing ${item.sku} — change fields then click Save Update.`);
+    setLongDescInput(item.long_description ?? "");
+    setNutritionRows(nutritionFromServer(item.nutrition));
+    setSaveMsg("");
+    setShowEditPanel(true);
+  }
+
+  function closeEditPanel() {
+    setShowEditPanel(false);
+    setEditingItem(null);
+    setSaveMsg("");
+    if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
+    setImagePreview("");
+    setImageFile(null);
   }
 
   async function deleteItem(sku: string) {
@@ -678,61 +682,66 @@ export default function ManagerDashboardPage() {
                 </table>
               </div>
 
-              {/* Quick Update Form */}
-              <div className="mt-5 rounded-2xl border border-zinc-200 bg-white/60 p-4 dark:border-zinc-700/50 dark:bg-zinc-900/30">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Quick Update</h3>
-                    <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                      Update fields for an item via PATCH. All fields except Item ID are optional.
-                    </p>
-                  </div>
-                  <button
-                    onClick={saveUpdate}
-                    disabled={saving}
-                    className={`rounded-xl px-4 py-2 font-medium text-white transition-colors ${
-                      saving ? "cursor-not-allowed bg-emerald-600/60" : "bg-emerald-600 hover:bg-emerald-500"
-                    }`}
-                  >
-                    {saving ? "Saving..." : "Save Update"}
-                  </button>
-                </div>
+            </section>
+          </div>
+        </div>
+      </main>
 
-                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Item ID <span className="text-red-500">*</span>
-                    </label>
+      {/* Edit Drawer */}
+      {showEditPanel && editingItem && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            onClick={closeEditPanel}
+          />
+
+          {/* Panel */}
+          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl dark:bg-zinc-900">
+
+            {/* Header */}
+            <div className="flex shrink-0 items-start justify-between border-b border-zinc-200 px-6 py-5 dark:border-zinc-700">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  SKU {editingItem.sku}
+                </p>
+                <h2 className="mt-0.5 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                  {editingItem.name}
+                </h2>
+              </div>
+              <button
+                onClick={closeEditPanel}
+                className="ml-4 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-7">
+
+              {/* Basic Info */}
+              <section>
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  Basic Info
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Name</label>
                     <input
                       className={inputClass}
-                      placeholder="e.g. 12"
-                      value={skuInput}
-                      onChange={handleSkuChange}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Name <span className="text-zinc-400">(optional)</span>
-                    </label>
-                    <input
-                      className={inputClass}
-                      placeholder="e.g. Organic Tomatoes"
                       value={nameInput}
                       onChange={(e) => setNameInput(e.target.value)}
                     />
                   </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Category <span className="text-zinc-400">(optional)</span>
-                    </label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Category</label>
                     <select
                       className={inputClass}
                       value={categoryInput}
                       onChange={(e) => setCategoryInput(e.target.value)}
                     >
-                      <option value="">— unchanged —</option>
                       <option>Fruits</option>
                       <option>Vegetables</option>
                       <option>Dairy</option>
@@ -740,84 +749,181 @@ export default function ManagerDashboardPage() {
                       <option>Meat & Seafood</option>
                     </select>
                   </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Weight (lb) <span className="text-zinc-400">(optional)</span>
-                    </label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Weight (lb)</label>
                     <input
+                      type="number"
+                      min="0"
+                      step="0.1"
                       className={inputClass}
-                      placeholder="e.g. 1.5"
                       value={weightInput}
                       onChange={(e) => setWeightInput(e.target.value)}
                     />
                   </div>
+                </div>
+              </section>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Stock <span className="text-zinc-400">(optional)</span>
-                    </label>
+              {/* Pricing & Stock */}
+              <section>
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  Pricing & Stock
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Price ($)</label>
                     <input
+                      type="number"
+                      min="0"
+                      step="0.01"
                       className={inputClass}
-                      placeholder="e.g. 50"
-                      value={stockInput}
-                      onChange={(e) => setStockInput(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Price <span className="text-zinc-400">(optional)</span>
-                    </label>
-                    <input
-                      className={inputClass}
-                      placeholder="e.g. 2.99"
                       value={priceInput}
                       onChange={(e) => setPriceInput(e.target.value)}
                     />
                   </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Image URL <span className="text-zinc-400">(optional)</span>
-                    </label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Stock (units)</label>
                     <input
+                      type="number"
+                      min="0"
+                      step="1"
                       className={inputClass}
-                      placeholder="https://..."
-                      value={imageUrlInput}
-                      onChange={(e) => {
-                        setImageUrlInput(e.target.value);
-                        if (!imageFile) {
-                          setPreviewWithCleanup(e.target.value.trim(), imagePreview, setImagePreview);
-                        }
-                      }}
+                      value={stockInput}
+                      onChange={(e) => setStockInput(e.target.value)}
                     />
                   </div>
+                </div>
+              </section>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                      Photo upload <span className="text-zinc-400">(optional)</span>
-                    </label>
-                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-600 transition-colors hover:bg-white/60 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900/30">
+              {/* Product Image */}
+              <section>
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  Product Image
+                </h3>
+                <div className="flex gap-4">
+                  <ImagePreview imageUrl={imagePreview} />
+                  <div className="flex flex-1 flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Image URL</label>
+                      <input
+                        className={inputClass}
+                        placeholder="https://..."
+                        value={imageUrlInput}
+                        onChange={(e) => {
+                          setImageUrlInput(e.target.value);
+                          if (!imageFile) {
+                            setPreviewWithCleanup(e.target.value.trim(), imagePreview, setImagePreview);
+                          }
+                        }}
+                      />
+                    </div>
+                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800">
                       <input type="file" accept="image/*" className="hidden" onChange={handleEditFileChange} />
-                      {imageFile ? `Selected: ${imageFile.name}` : "Choose replacement photo"}
+                      {imageFile ? `✓ ${imageFile.name}` : "Or upload a photo"}
                     </label>
                   </div>
                 </div>
+              </section>
 
-                <div className="mt-4">
-                  <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-300">Current / new photo preview</p>
-                  <ImagePreview imageUrl={imagePreview} />
+              {/* Description */}
+              <section>
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  Description
+                </h3>
+                <textarea
+                  className={`${inputClass} min-h-[100px] w-full resize-y`}
+                  placeholder="Describe this product for customers..."
+                  value={longDescInput}
+                  onChange={(e) => setLongDescInput(e.target.value)}
+                />
+              </section>
+
+              {/* Nutrition */}
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                    Nutrition
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setNutritionRows((prev) => [...prev, { key: "", value: "" }])}
+                    className="rounded-lg border border-emerald-300 px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                  >
+                    + Add field
+                  </button>
                 </div>
 
-                {saveMsg && (
-                  <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-200">{saveMsg}</p>
+                {nutritionRows.length === 0 ? (
+                  <p className="text-sm text-zinc-400 dark:text-zinc-500">No nutrition data yet.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {/* Column headers */}
+                    <div className="grid grid-cols-[1fr_7rem_1.5rem] gap-2 px-1">
+                      <span className="text-xs text-zinc-400">Field</span>
+                      <span className="text-xs text-zinc-400">Value</span>
+                    </div>
+                    {nutritionRows.map((row, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_7rem_1.5rem] items-center gap-2">
+                        <input
+                          className={`${inputClass} text-sm`}
+                          placeholder="e.g. calories"
+                          value={row.key}
+                          onChange={(e) =>
+                            setNutritionRows((prev) =>
+                              prev.map((r, idx) => idx === i ? { ...r, key: e.target.value } : r)
+                            )
+                          }
+                        />
+                        <input
+                          className={`${inputClass} text-sm`}
+                          placeholder="e.g. 100"
+                          value={row.value}
+                          onChange={(e) =>
+                            setNutritionRows((prev) =>
+                              prev.map((r, idx) => idx === i ? { ...r, value: e.target.value } : r)
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setNutritionRows((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="flex h-6 w-6 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                          aria-label="Remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
+              </section>
+            </div>
+
+            {/* Sticky footer */}
+            <div className="shrink-0 border-t border-zinc-200 bg-white px-6 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+              {saveMsg && (
+                <p className="mb-3 text-sm text-red-600 dark:text-red-400">{saveMsg}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={closeEditPanel}
+                  className="flex-1 rounded-xl border border-zinc-300 py-2.5 font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveUpdate}
+                  disabled={saving}
+                  className={`flex-1 rounded-xl py-2.5 font-medium text-white transition-colors ${
+                    saving ? "cursor-not-allowed bg-emerald-600/60" : "bg-emerald-600 hover:bg-emerald-500"
+                  }`}
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
               </div>
-            </section>
+            </div>
           </div>
-        </div>
-      </main>
+        </>
+      )}
     </>
   );
 }
