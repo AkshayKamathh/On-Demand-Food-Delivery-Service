@@ -49,8 +49,8 @@ Create a new Snippet, paste the query, and press run.
 ## Product Images/Supabase Storage
 This project supports two ways of adding product images:
 
-Use a direct image URL from an external website.
-Upload a local image file through Supabase Storage.
+-Use a direct image URL from an external website.
+-Upload a local image file through Supabase Storage.
 For local uploads, the project uses a Supabase Storage bucket named product-images. When a manager uploads a product image from the dashboard, the application uploads the file into that bucket, generates a public URL for the uploaded file, and stores that URL in the product’s image_url field in the items table.
 
 The database does not store the image file itself. It only stores the URL that points to the image in Supabase Storage. 
