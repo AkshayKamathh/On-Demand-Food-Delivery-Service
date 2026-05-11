@@ -58,6 +58,7 @@ The database does not store the image file itself. It only stores the URL that p
 An example URL: https://<your-project>.supabase.co/storage/v1/object/public/product-images/products/example-image.jpg
 
 Supabase Storage Setup
+
 To enable local product image uploads:
 ```
 Open your Supabase project dashboard.
