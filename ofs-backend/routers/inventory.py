@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional
-from psycopg.errors import ForeignKeyViolation
+from psycopg.types.json import Jsonb
 from db import get_db
 from schemas.inventory import InventoryItem, InventoryUpdate, InventoryCreate
 
@@ -39,9 +39,12 @@ def list_inventory():
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT item_id, description, category_id, price, weight, stock, is_active, image_url
-            FROM public.items
-            ORDER BY item_id
+            SELECT i.item_id, i.description, i.category_id, i.price, i.weight,
+                   i.stock, i.is_active, i.image_url,
+                   d.long_description, d.nutrition, d.extra
+            FROM public.items i
+            LEFT JOIN public.item_details d ON d.item_id = i.item_id
+            ORDER BY i.item_id
             """
         )
         rows = cur.fetchall()
@@ -62,6 +65,9 @@ def list_inventory():
                 status=status_from_stock(stock),
                 image_url=r["image_url"],
                 is_active=bool(r["is_active"]),
+                long_description=r["long_description"],
+                nutrition=r["nutrition"],
+                extra=r["extra"],
             )
         )
     return items
@@ -74,9 +80,12 @@ def get_inventory_item(sku: str):
     with get_db() as (conn, cur):
         cur.execute(
             """
-            SELECT item_id, description, category_id, price, weight, stock, is_active, image_url
-            FROM public.items
-            WHERE item_id = %(item_id)s
+            SELECT i.item_id, i.description, i.category_id, i.price, i.weight,
+                   i.stock, i.is_active, i.image_url,
+                   d.long_description, d.nutrition, d.extra
+            FROM public.items i
+            LEFT JOIN public.item_details d ON d.item_id = i.item_id
+            WHERE i.item_id = %(item_id)s
             """,
             {"item_id": item_id},
         )
@@ -98,6 +107,9 @@ def get_inventory_item(sku: str):
         status=status_from_stock(stock),
         image_url=r["image_url"],
         is_active=bool(r["is_active"]),
+        long_description=r["long_description"],
+        nutrition=r["nutrition"],
+        extra=r["extra"],
     )
 
 #PATCH /inventory/{sku}
@@ -145,22 +157,76 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         set_clauses.append("image_url = %(image_url)s")
         params["image_url"] = data["image_url"]
 
-    if not set_clauses:
+    detail_clauses: dict = {}
+    if "long_description" in data:
+        detail_clauses["long_description"] = data["long_description"]
+    if "nutrition" in data:
+        detail_clauses["nutrition"] = Jsonb(data["nutrition"]) if data["nutrition"] is not None else None
+    if "extra" in data:
+        detail_clauses["extra"] = Jsonb(data["extra"]) if data["extra"] is not None else None
+
+    if not set_clauses and not detail_clauses:
         raise HTTPException(status_code=400, detail="No updatable fields provided")
 
     with get_db() as (conn, cur):
-        cur.execute(
-            f"""
-            UPDATE public.items
-            SET {", ".join(set_clauses)}
-            WHERE item_id = %(item_id)s
-            RETURNING item_id, description, category_id, price, weight, stock, is_active, image_url
-            """,
-            params,
-        )
-        r = cur.fetchone()
-        if not r:
-            raise HTTPException(status_code=404, detail="Item not found")
+        if set_clauses:
+            cur.execute(
+                f"""
+                UPDATE public.items
+                SET {", ".join(set_clauses)}
+                WHERE item_id = %(item_id)s
+                RETURNING item_id, description, category_id, price, weight, stock, is_active, image_url
+                """,
+                params,
+            )
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Item not found")
+        else:
+            cur.execute(
+                """
+                SELECT item_id, description, category_id, price, weight, stock, is_active, image_url
+                FROM public.items WHERE item_id = %(item_id)s
+                """,
+                {"item_id": item_id},
+            )
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Item not found")
+
+        long_desc = None
+        nutrition = None
+        extra_data = None
+        if detail_clauses:
+            upsert_cols = list(detail_clauses.keys())
+            upsert_vals = {k: v for k, v in detail_clauses.items()}
+            upsert_vals["item_id"] = item_id
+            set_detail = ", ".join(f"{c} = %({c})s" for c in upsert_cols)
+            cur.execute(
+                f"""
+                INSERT INTO public.item_details (item_id, {", ".join(upsert_cols)})
+                VALUES (%(item_id)s, {", ".join(f"%({c})s" for c in upsert_cols)})
+                ON CONFLICT (item_id) DO UPDATE SET {set_detail}
+                RETURNING long_description, nutrition, extra
+                """,
+                upsert_vals,
+            )
+            detail_row = cur.fetchone()
+            if detail_row:
+                long_desc = detail_row["long_description"]
+                nutrition = detail_row["nutrition"]
+                extra_data = detail_row["extra"]
+        else:
+            cur.execute(
+                "SELECT long_description, nutrition, extra FROM public.item_details WHERE item_id = %(item_id)s",
+                {"item_id": item_id},
+            )
+            detail_row = cur.fetchone()
+            if detail_row:
+                long_desc = detail_row["long_description"]
+                nutrition = detail_row["nutrition"]
+                extra_data = detail_row["extra"]
+
         conn.commit()
 
     stock = int(r["stock"]) if r["stock"] is not None else 0
@@ -175,6 +241,9 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         status=status_from_stock(stock),
         image_url=r["image_url"],
         is_active=bool(r["is_active"]),
+        long_description=long_desc,
+        nutrition=nutrition,
+        extra=extra_data,
     )
 
 # DELETE /inventory/{sku}  — was hard delete, now soft delete
