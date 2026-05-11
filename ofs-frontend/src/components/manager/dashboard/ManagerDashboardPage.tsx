@@ -24,10 +24,90 @@ type InventoryItem = {
   is_active: boolean;
   long_description?: string | null;
   nutrition?: Record<string, unknown> | null;
+  extra?: Record<string, unknown> | null;
 };
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const IMAGE_BUCKET = "product-images";
+
+type StandardNutrition = {
+  serving_size: string;
+  calories: string;
+  total_fat_g: string;
+  saturated_fat_g: string;
+  cholesterol_mg: string;
+  sodium_mg: string;
+  total_carbs_g: string;
+  dietary_fiber_g: string;
+  sugars_g: string;
+  protein_g: string;
+  vitamin_a_mcg: string;
+  vitamin_c_mg: string;
+  vitamin_d_iu: string;
+  vitamin_e_mg: string;
+  vitamin_k_mcg: string;
+  vitamin_b6_mg: string;
+  vitamin_b12_mcg: string;
+  folate_mcg: string;
+  calcium_mg: string;
+  iron_mg: string;
+  potassium_mg: string;
+  magnesium_mg: string;
+  zinc_mg: string;
+  phosphorus_mg: string;
+  choline_mg: string;
+};
+
+type NutritionFieldDef = {
+  key: keyof StandardNutrition;
+  label: string;
+  unit?: string;
+  inputType: "text" | "number";
+};
+
+const CORE_NUTRITION_FIELDS: NutritionFieldDef[] = [
+  { key: "serving_size",    label: "Serving Size",   inputType: "text"   },
+  { key: "calories",        label: "Calories",        inputType: "number" },
+  { key: "total_fat_g",     label: "Total Fat",       unit: "g",  inputType: "number" },
+  { key: "saturated_fat_g", label: "Saturated Fat",   unit: "g",  inputType: "number" },
+  { key: "cholesterol_mg",  label: "Cholesterol",     unit: "mg", inputType: "number" },
+  { key: "sodium_mg",       label: "Sodium",          unit: "mg", inputType: "number" },
+  { key: "total_carbs_g",   label: "Total Carbs",     unit: "g",  inputType: "number" },
+  { key: "dietary_fiber_g", label: "Dietary Fiber",   unit: "g",  inputType: "number" },
+  { key: "sugars_g",        label: "Sugars",          unit: "g",  inputType: "number" },
+  { key: "protein_g",       label: "Protein",         unit: "g",  inputType: "number" },
+];
+
+const VITAMIN_FIELDS: NutritionFieldDef[] = [
+  { key: "vitamin_a_mcg",  label: "Vitamin A",   unit: "mcg", inputType: "number" },
+  { key: "vitamin_c_mg",   label: "Vitamin C",   unit: "mg",  inputType: "number" },
+  { key: "vitamin_d_iu",   label: "Vitamin D",   unit: "IU",  inputType: "number" },
+  { key: "vitamin_e_mg",   label: "Vitamin E",   unit: "mg",  inputType: "number" },
+  { key: "vitamin_k_mcg",  label: "Vitamin K",   unit: "mcg", inputType: "number" },
+  { key: "vitamin_b6_mg",  label: "Vitamin B6",  unit: "mg",  inputType: "number" },
+  { key: "vitamin_b12_mcg",label: "Vitamin B12", unit: "mcg", inputType: "number" },
+  { key: "folate_mcg",     label: "Folate",      unit: "mcg", inputType: "number" },
+  { key: "calcium_mg",     label: "Calcium",     unit: "mg",  inputType: "number" },
+  { key: "iron_mg",        label: "Iron",        unit: "mg",  inputType: "number" },
+  { key: "potassium_mg",   label: "Potassium",   unit: "mg",  inputType: "number" },
+  { key: "magnesium_mg",   label: "Magnesium",   unit: "mg",  inputType: "number" },
+  { key: "zinc_mg",        label: "Zinc",        unit: "mg",  inputType: "number" },
+  { key: "phosphorus_mg",  label: "Phosphorus",  unit: "mg",  inputType: "number" },
+  { key: "choline_mg",     label: "Choline",     unit: "mg",  inputType: "number" },
+];
+
+const STANDARD_NUTRITION_FIELDS = [...CORE_NUTRITION_FIELDS, ...VITAMIN_FIELDS];
+const STANDARD_KEYS = new Set<string>(STANDARD_NUTRITION_FIELDS.map((f) => f.key));
+
+const EMPTY_STANDARD_NUTRITION: StandardNutrition = {
+  serving_size: "", calories: "", total_fat_g: "", saturated_fat_g: "",
+  cholesterol_mg: "", sodium_mg: "", total_carbs_g: "", dietary_fiber_g: "",
+  sugars_g: "", protein_g: "",
+  vitamin_a_mcg: "", vitamin_c_mg: "", vitamin_d_iu: "", vitamin_e_mg: "",
+  vitamin_k_mcg: "", vitamin_b6_mg: "", vitamin_b12_mcg: "", folate_mcg: "",
+  calcium_mg: "", iron_mg: "", potassium_mg: "", magnesium_mg: "",
+  zinc_mg: "", phosphorus_mg: "", choline_mg: "",
+};
 
 export default function ManagerDashboardPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -58,7 +138,8 @@ export default function ManagerDashboardPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [longDescInput, setLongDescInput] = useState("");
-  const [nutritionRows, setNutritionRows] = useState<{ key: string; value: string }[]>([]);
+  const [standardNutrition, setStandardNutrition] = useState<StandardNutrition>(EMPTY_STANDARD_NUTRITION);
+  const [extraDetailRows, setExtraDetailRows] = useState<{ key: string; value: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
@@ -87,18 +168,46 @@ export default function ManagerDashboardPage() {
     return message;
   }
 
-  function nutritionFromServer(n: Record<string, unknown> | null | undefined) {
-    if (!n || Object.keys(n).length === 0) return [];
-    return Object.entries(n).map(([key, value]) => ({ key, value: String(value) }));
+  function nutritionFromServer(n: Record<string, unknown> | null | undefined): StandardNutrition {
+    if (!n || Object.keys(n).length === 0) return EMPTY_STANDARD_NUTRITION;
+    const standard = { ...EMPTY_STANDARD_NUTRITION };
+    for (const [key, value] of Object.entries(n)) {
+      if (STANDARD_KEYS.has(key)) {
+        standard[key as keyof StandardNutrition] = String(value);
+      }
+    }
+    return standard;
   }
 
-  function nutritionToPayload(rows: { key: string; value: string }[]): Record<string, number | string> | null {
+  function nutritionToPayload(standard: StandardNutrition): Record<string, number | string> | null {
     const result: Record<string, number | string> = {};
+    for (const field of STANDARD_NUTRITION_FIELDS) {
+      const raw = standard[field.key].trim();
+      if (!raw) continue;
+      if (field.inputType === "number") {
+        const num = Number(raw);
+        if (Number.isFinite(num)) result[field.key] = num;
+      } else {
+        result[field.key] = raw;
+      }
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  }
+
+  function extraFromServer(e: Record<string, unknown> | null | undefined): { key: string; value: string }[] {
+    if (!e || Object.keys(e).length === 0) return [];
+    return Object.entries(e).map(([key, value]) => ({ key, value: String(value) }));
+  }
+
+  function extraToPayload(rows: { key: string; value: string }[]): Record<string, boolean | number | string> | null {
+    const result: Record<string, boolean | number | string> = {};
     for (const { key, value } of rows) {
       const k = key.trim();
       if (!k || value.trim() === "") continue;
-      const num = Number(value);
-      result[k] = Number.isFinite(num) ? num : value.trim();
+      const v = value.trim();
+      if (v === "true") result[k] = true;
+      else if (v === "false") result[k] = false;
+      else { const num = Number(v); result[k] = Number.isFinite(num) ? num : v; }
     }
     return Object.keys(result).length > 0 ? result : null;
   }
@@ -303,9 +412,14 @@ export default function ManagerDashboardPage() {
         payload.long_description = longDescInput.trim();
       }
 
-      const nutritionPayload = nutritionToPayload(nutritionRows);
+      const nutritionPayload = nutritionToPayload(standardNutrition);
       if (nutritionPayload) {
         payload.nutrition = nutritionPayload;
+      }
+
+      const extraPayload = extraToPayload(extraDetailRows);
+      if (extraPayload) {
+        payload.extra = extraPayload;
       }
 
       if (Object.keys(payload).length === 0) {
@@ -347,7 +461,8 @@ export default function ManagerDashboardPage() {
     setImageUrlInput(item.image_url ?? "");
     setPreviewWithCleanup(item.image_url ?? "", imagePreview, setImagePreview);
     setLongDescInput(item.long_description ?? "");
-    setNutritionRows(nutritionFromServer(item.nutrition));
+    setStandardNutrition(nutritionFromServer(item.nutrition));
+    setExtraDetailRows(extraFromServer(item.extra));
     setSaveMsg("");
     setShowEditPanel(true);
   }
@@ -359,6 +474,8 @@ export default function ManagerDashboardPage() {
     if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
     setImagePreview("");
     setImageFile(null);
+    setStandardNutrition(EMPTY_STANDARD_NUTRITION);
+    setExtraDetailRows([]);
   }
 
   async function deleteItem(sku: string) {
@@ -839,53 +956,76 @@ export default function ManagerDashboardPage() {
 
               {/* Nutrition */}
               <section>
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  Nutrition
+                </h3>
+
+                <NutritionFieldGroup
+                  fields={CORE_NUTRITION_FIELDS}
+                  values={standardNutrition}
+                  onChange={(key, val) => setStandardNutrition((prev) => ({ ...prev, [key]: val }))}
+                />
+
+                <p className="mt-4 mb-2 text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                  Vitamins &amp; Minerals
+                </p>
+                <NutritionFieldGroup
+                  fields={VITAMIN_FIELDS}
+                  values={standardNutrition}
+                  onChange={(key, val) => setStandardNutrition((prev) => ({ ...prev, [key]: val }))}
+                />
+              </section>
+
+              {/* Extra Details */}
+              <section>
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                    Nutrition
+                    Extra Details
                   </h3>
                   <button
                     type="button"
-                    onClick={() => setNutritionRows((prev) => [...prev, { key: "", value: "" }])}
+                    onClick={() => setExtraDetailRows((prev) => [...prev, { key: "", value: "" }])}
                     className="rounded-lg border border-emerald-300 px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
                   >
                     + Add field
                   </button>
                 </div>
-
-                {nutritionRows.length === 0 ? (
-                  <p className="text-sm text-zinc-400 dark:text-zinc-500">No nutrition data yet.</p>
+                <p className="mb-2 text-xs text-zinc-400 dark:text-zinc-500">
+                  Product metadata: origin, storage, certifications, etc. Use <code>true</code> / <code>false</code> for boolean values.
+                </p>
+                {extraDetailRows.length === 0 ? (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500">No extra details yet.</p>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    {/* Column headers */}
-                    <div className="grid grid-cols-[1fr_7rem_1.5rem] gap-2 px-1">
+                    <div className="grid grid-cols-[1fr_1fr_1.5rem] gap-2 px-1">
                       <span className="text-xs text-zinc-400">Field</span>
                       <span className="text-xs text-zinc-400">Value</span>
                     </div>
-                    {nutritionRows.map((row, i) => (
-                      <div key={i} className="grid grid-cols-[1fr_7rem_1.5rem] items-center gap-2">
+                    {extraDetailRows.map((row, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_1fr_1.5rem] items-center gap-2">
                         <input
                           className={`${inputClass} text-sm`}
-                          placeholder="e.g. calories"
+                          placeholder="e.g. origin"
                           value={row.key}
                           onChange={(e) =>
-                            setNutritionRows((prev) =>
+                            setExtraDetailRows((prev) =>
                               prev.map((r, idx) => idx === i ? { ...r, key: e.target.value } : r)
                             )
                           }
                         />
                         <input
                           className={`${inputClass} text-sm`}
-                          placeholder="e.g. 100"
+                          placeholder="e.g. USA"
                           value={row.value}
                           onChange={(e) =>
-                            setNutritionRows((prev) =>
+                            setExtraDetailRows((prev) =>
                               prev.map((r, idx) => idx === i ? { ...r, value: e.target.value } : r)
                             )
                           }
                         />
                         <button
                           type="button"
-                          onClick={() => setNutritionRows((prev) => prev.filter((_, idx) => idx !== i))}
+                          onClick={() => setExtraDetailRows((prev) => prev.filter((_, idx) => idx !== i))}
                           className="flex h-6 w-6 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                           aria-label="Remove"
                         >
@@ -925,6 +1065,38 @@ export default function ManagerDashboardPage() {
         </>
       )}
     </>
+  );
+}
+
+function NutritionFieldGroup({
+  fields,
+  values,
+  onChange,
+}: {
+  fields: { key: keyof StandardNutrition; label: string; unit?: string; inputType: "text" | "number" }[];
+  values: StandardNutrition;
+  onChange: (key: keyof StandardNutrition, value: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {fields.map((field) => (
+        <div key={field.key} className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {field.label}
+            {field.unit && <span className="ml-1 font-normal text-zinc-400">({field.unit})</span>}
+          </label>
+          <input
+            type={field.inputType}
+            min={field.inputType === "number" ? "0" : undefined}
+            step={field.inputType === "number" ? "any" : undefined}
+            className={`${inputClass} text-sm`}
+            placeholder={field.inputType === "number" ? "—" : "e.g. 1 cup (240g)"}
+            value={values[field.key]}
+            onChange={(e) => onChange(field.key, e.target.value)}
+          />
+        </div>
+      ))}
+    </div>
   );
 }
 

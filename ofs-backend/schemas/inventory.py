@@ -14,6 +14,7 @@ class InventoryItem(BaseModel):
     is_active: bool = True
     long_description: Optional[str] = None
     nutrition: Optional[Dict[str, Any]] = None
+    extra: Optional[Dict[str, Any]] = None
 
 #Used when we PATCH an inventory item
 class InventoryUpdate(BaseModel):
@@ -27,6 +28,7 @@ class InventoryUpdate(BaseModel):
     is_active: Optional[bool] = None
     long_description: Optional[str] = None
     nutrition: Optional[Dict[str, Any]] = None
+    extra: Optional[Dict[str, Any]] = None
 
 #Use when we POST a new inventory item
 class InventoryCreate(BaseModel):

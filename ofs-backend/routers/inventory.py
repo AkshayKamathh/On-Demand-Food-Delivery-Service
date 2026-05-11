@@ -41,7 +41,7 @@ def list_inventory():
             """
             SELECT i.item_id, i.description, i.category_id, i.price, i.weight,
                    i.stock, i.is_active, i.image_url,
-                   d.long_description, d.nutrition
+                   d.long_description, d.nutrition, d.extra
             FROM public.items i
             LEFT JOIN public.item_details d ON d.item_id = i.item_id
             ORDER BY i.item_id
@@ -67,6 +67,7 @@ def list_inventory():
                 is_active=bool(r["is_active"]),
                 long_description=r["long_description"],
                 nutrition=r["nutrition"],
+                extra=r["extra"],
             )
         )
     return items
@@ -81,7 +82,7 @@ def get_inventory_item(sku: str):
             """
             SELECT i.item_id, i.description, i.category_id, i.price, i.weight,
                    i.stock, i.is_active, i.image_url,
-                   d.long_description, d.nutrition
+                   d.long_description, d.nutrition, d.extra
             FROM public.items i
             LEFT JOIN public.item_details d ON d.item_id = i.item_id
             WHERE i.item_id = %(item_id)s
@@ -108,6 +109,7 @@ def get_inventory_item(sku: str):
         is_active=bool(r["is_active"]),
         long_description=r["long_description"],
         nutrition=r["nutrition"],
+        extra=r["extra"],
     )
 
 #PATCH /inventory/{sku}
@@ -160,6 +162,8 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         detail_clauses["long_description"] = data["long_description"]
     if "nutrition" in data:
         detail_clauses["nutrition"] = Jsonb(data["nutrition"]) if data["nutrition"] is not None else None
+    if "extra" in data:
+        detail_clauses["extra"] = Jsonb(data["extra"]) if data["extra"] is not None else None
 
     if not set_clauses and not detail_clauses:
         raise HTTPException(status_code=400, detail="No updatable fields provided")
@@ -192,6 +196,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
 
         long_desc = None
         nutrition = None
+        extra_data = None
         if detail_clauses:
             upsert_cols = list(detail_clauses.keys())
             upsert_vals = {k: v for k, v in detail_clauses.items()}
@@ -202,7 +207,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
                 INSERT INTO public.item_details (item_id, {", ".join(upsert_cols)})
                 VALUES (%(item_id)s, {", ".join(f"%({c})s" for c in upsert_cols)})
                 ON CONFLICT (item_id) DO UPDATE SET {set_detail}
-                RETURNING long_description, nutrition
+                RETURNING long_description, nutrition, extra
                 """,
                 upsert_vals,
             )
@@ -210,15 +215,17 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
             if detail_row:
                 long_desc = detail_row["long_description"]
                 nutrition = detail_row["nutrition"]
+                extra_data = detail_row["extra"]
         else:
             cur.execute(
-                "SELECT long_description, nutrition FROM public.item_details WHERE item_id = %(item_id)s",
+                "SELECT long_description, nutrition, extra FROM public.item_details WHERE item_id = %(item_id)s",
                 {"item_id": item_id},
             )
             detail_row = cur.fetchone()
             if detail_row:
                 long_desc = detail_row["long_description"]
                 nutrition = detail_row["nutrition"]
+                extra_data = detail_row["extra"]
 
         conn.commit()
 
@@ -236,6 +243,7 @@ def update_inventory_item(sku: str, payload: InventoryUpdate):
         is_active=bool(r["is_active"]),
         long_description=long_desc,
         nutrition=nutrition,
+        extra=extra_data,
     )
 
 # DELETE /inventory/{sku}  — was hard delete, now soft delete
